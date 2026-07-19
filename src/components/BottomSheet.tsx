@@ -1,33 +1,23 @@
-// ============================================================================
-// BottomSheet — slides up from bottom, shows content per active tab
-// ============================================================================
-
 import React from 'react';
 import type { SheetTab } from '../App';
 import { useStore } from '../store/useStore';
-import { CARCASS_SIZES, FITTING_CATALOG, APPLIANCE_CATALOG, COLOUR_PALETTES } from '../domain/catalog';
-import type { CarcassSize, FittingType, ApplianceType, Furniture, ColourScheme } from '../domain/types';
+import { CARCASS_SIZES, CARCASS_DEPTHS, FITTING_CATALOG, APPLIANCE_CATALOG, COLOUR_PALETTES } from '../domain/catalog';
+import type { CarcassSize, FittingType, ApplianceType, ColourScheme } from '../domain/types';
 
-interface Props {
-  tab: SheetTab;
-  onClose: () => void;
-}
+interface Props { tab: SheetTab; onClose: () => void; }
 
 export default function BottomSheet({ tab, onClose }: Props) {
   if (!tab) return null;
-
+  const titles: Record<string, string> = { components: 'Components', measure: 'Room Measurements', colours: 'Colour & Style', analysis: 'Analysis & Recommendations' };
   return (
     <div className="bottom-sheet">
       <div className="bottom-sheet-header">
-        <h2>
-          {tab === 'components' && 'Components'}
-          {tab === 'measure' && 'Room Measurements'}
-          {tab === 'colours' && 'Colour & Style'}
-          {tab === 'analysis' && 'Analysis & Recommendations'}
-        </h2>
-        <button className="bottom-sheet-close" onClick={onClose}>×</button>
+        <h2>{titles[tab]}</h2>
+        <button className="sheet-close" onClick={onClose}>
+          <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><line x1="5" y1="5" x2="15" y2="15"/><line x1="15" y1="5" x2="5" y2="15"/></svg>
+        </button>
       </div>
-      <div className="bottom-sheet-content">
+      <div className="sheet-content">
         {tab === 'components' && <ComponentsPanel />}
         {tab === 'measure' && <MeasurePanel />}
         {tab === 'colours' && <ColourPanel />}
@@ -37,7 +27,7 @@ export default function BottomSheet({ tab, onClose }: Props) {
   );
 }
 
-// ---- COMPONENTS PANEL ----
+// ---- COMPONENTS ----
 function ComponentsPanel() {
   const setTool = useStore((s) => s.setTool);
   const tool = useStore((s) => s.tool);
@@ -45,161 +35,81 @@ function ComponentsPanel() {
   const setSelectedCarcassSize = useStore((s) => s.setSelectedCarcassSize);
   const addFurniture = useStore((s) => s.addFurniture);
   const design = useStore((s) => s.design);
+  const selectedId = useStore((s) => s.selectedId);
+  const updateCarcass = useStore((s) => s.updateCarcass);
+  const selectedCarcass = design.carcasses.find((c) => c.id === selectedId);
+
+  const hasSel = !!selectedCarcass;
+
+  const tools = [
+    { id: 'select', label: 'Select & move', icon: <svg viewBox="0 0 20 20" width="15" height="15" fill="currentColor"><path d="M4 3 L16 10 L10.4 11.2 L13 17 L10.7 18 L8.1 12.2 L4 15.5 Z"/></svg> },
+    { id: 'pan', label: 'Pan', icon: <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M7 10 V4.6 a1.2 1.2 0 0 1 2.4 0 V9"/><path d="M9.4 9 V3.6 a1.2 1.2 0 0 1 2.4 0 V9"/><path d="M11.8 9 V5.1 a1.2 1.2 0 0 1 2.4 0 V11"/><path d="M14.2 11 V7.6 a1.1 1.1 0 0 1 2.2 0 V13 c0 3-2 5.5-5.4 5.5 h-1 c-2 0-3-0.8-4-2 L4 13.5 c-0.6-0.8-0.3-1.8 0.5-2.2 c0.7-0.3 1.4 0 1.9 0.6 L7 12.5"/></svg> },
+    { id: 'place-carcass', label: 'Place cabinet', icon: <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"><rect x="3" y="3" width="14" height="14" rx="1.5"/><line x1="10" y1="3" x2="10" y2="17"/></svg> },
+    { id: 'place-furniture', label: 'Place furniture', icon: <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"><rect x="2" y="5" width="16" height="3" rx="1"/><line x1="4" y1="8" x2="4" y2="16"/><line x1="16" y1="8" x2="16" y2="16"/></svg> },
+  ];
 
   return (
     <div>
-      {/* Tools */}
       <div className="section-label">Tools</div>
-      <div className="chip-list" style={{ marginBottom: 20 }}>
-        <button
-          className={`chip ${tool === 'select' ? 'active' : ''}`}
-          onClick={() => setTool('select')}
-        >
-          <span className="chip-icon">🖱️</span> Select & Move
-        </button>
-        <button
-          className={`chip ${tool === 'pan' ? 'active' : ''}`}
-          onClick={() => setTool('pan')}
-        >
-          <span className="chip-icon">✋</span> Pan
-        </button>
-        <button
-          className={`chip ${tool === 'place-carcass' ? 'active' : ''}`}
-          onClick={() => { setTool('place-carcass'); }}
-        >
-          <span className="chip-icon">📦</span> Place Carcass
-        </button>
-        <button
-          className={`chip ${tool === 'place-furniture' ? 'active' : ''}`}
-          onClick={() => setTool('place-furniture')}
-        >
-          <span className="chip-icon">🪑</span> Place Furniture
-        </button>
-        <button
-          className={`chip ${tool === 'draw-room' ? 'active' : ''}`}
-          onClick={() => useStore.getState().startDrawingRoom()}
-        >
-          <span className="chip-icon">✏️</span> Draw Room
-        </button>
+      <div className="chip-row">
+        {tools.map((t) => (
+          <button key={t.id} className={`chip ${tool === t.id ? 'active' : ''}`} onClick={() => setTool(t.id as any)}>{t.icon} {t.label}</button>
+        ))}
       </div>
 
-      {/* Carcass Sizes */}
-      <div className="section-label">Standard Carcass Widths</div>
-      <div className="card-grid" style={{ marginBottom: 20 }}>
+      <div className="section-label">Standard cabinet widths</div>
+      <div className="size-card-row">
         {CARCASS_SIZES.map((size) => (
-          <button
-            key={size}
-            className={`size-card ${selectedCarcassSize === size ? 'active' : ''}`}
-            onClick={() => {
-              setSelectedCarcassSize(size as CarcassSize);
-              setTool('place-carcass');
-            }}
-          >
-            <div className="size-number">{size}</div>
-            <div className="size-unit">mm</div>
-            <div className="size-visual" style={{ width: `${size / 12}px`, maxWidth: '100%' }} />
+          <button key={size} className={`size-card ${selectedCarcassSize === size ? 'active' : ''}`} onClick={() => { setSelectedCarcassSize(size as CarcassSize); setTool('place-carcass'); }}>
+            <div className="num">{size}</div><div className="unit">mm</div>
           </button>
         ))}
       </div>
 
-      {/* Fittings */}
-      <div className="section-label">Fittings & Internal Storage</div>
-      <div className="chip-list" style={{ marginBottom: 20 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <div className="section-label" style={{ margin: 0 }}>Fittings & internal storage</div>
+        <div className="hint-text">{!hasSel ? '(select a cabinet on the canvas first)' : ''}</div>
+      </div>
+      <div className="fitting-chip-row" style={{ opacity: hasSel ? 1 : 0.45, pointerEvents: hasSel ? 'auto' : 'none', marginBottom: 24 }}>
         {FITTING_CATALOG.filter((f) => f.type !== 'plain').map((f) => (
-          <button key={f.type} className="chip" title={f.description}>
-            <span className="chip-icon">
-              {f.type.includes('drawer') ? '🗄️' : f.type.includes('corner') ? '🔄' : f.type.includes('shelf') ? '📏' : f.type.includes('spice') ? '🧂' : f.type.includes('wine') ? '🍷' : f.type.includes('bin') ? '🗑️' : f.type.includes('larder') ? '🥫' : '📦'}
-            </span>
-            {f.label}
+          <button key={f.type} className="fitting-chip" onClick={() => selectedCarcass && updateCarcass(selectedCarcass.id, {
+            fittings: [{ id: `fitting-${Date.now()}`, type: f.type as FittingType, label: f.label, quantity: f.type === 'drawer' ? 3 : f.type === 'shelf' ? 2 : 1 }]
+          })}>{f.label}</button>
+        ))}
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <div className="section-label" style={{ margin: 0 }}>Appliances</div>
+        <div className="hint-text">{!hasSel ? '(select a cabinet on the canvas first)' : ''}</div>
+      </div>
+      <div className="appliance-grid" style={{ opacity: hasSel ? 1 : 0.45, pointerEvents: hasSel ? 'auto' : 'none', marginBottom: 24 }}>
+        {APPLIANCE_CATALOG.map((a) => (
+          <button key={a.type} className="appliance-card" onClick={() => selectedCarcass && updateCarcass(selectedCarcass.id, {
+            appliance: { id: `appliance-${Date.now()}`, type: a.type as ApplianceType, label: a.label, width: selectedCarcass.size, integrated: a.integrated }
+          })}>
+            <div className="name">{a.label}</div>
+            <div className="sizes">{a.standardWidths.join(' / ')}mm</div>
           </button>
         ))}
       </div>
 
-      {/* Appliances */}
-      <div className="section-label">Appliances (allocate to a carcass)</div>
-      <div className="card-grid" style={{ marginBottom: 20 }}>
-        {APPLIANCE_CATALOG.map((a) => (
-          <div key={a.type} className="component-card" title={a.description}>
-            <div className="card-icon">
-              {a.type === 'sink' ? '🚰' : a.type === 'hob' ? '🔥' : a.type.includes('fridge') ? '🧊' : a.type === 'oven' ? '🍳' : a.type === 'dishwasher' ? '🫧' : a.type === 'microwave' ? '📡' : a.type === 'rangehood' ? '💨' : a.type.includes('wine') ? '🍷' : a.type.includes('wash') ? '🌀' : a.type.includes('dryer') ? '👕' : a.type.includes('coffee') ? '☕' : '🔌'}
-            </div>
-            <div className="card-title">{a.label}</div>
-            <div className="card-subtitle">{a.standardWidths.join('/')}mm</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Furniture */}
       <div className="section-label">Furniture</div>
-      <div className="card-grid">
-        <button
-          className="component-card"
-          onClick={() => {
-            addFurniture({
-              id: `furniture-${Date.now()}`,
-              type: 'dining-table', label: 'Dining Table',
-              position: { x: design.room.width / 2, y: design.room.depth / 2 },
-              width: 1800, depth: 900, rotation: 0, seats: 6,
-            });
-          }}
-        >
-          <div className="card-icon">🍽️</div>
-          <div className="card-title">Dining Table</div>
-          <div className="card-subtitle">6 seats</div>
+      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+        <button className="furniture-card" onClick={() => addFurniture({ id: `f-${Date.now()}`, type: 'dining-table', label: 'Dining Table', position: { x: design.room.width / 2 - 900, y: design.room.depth / 2 - 450 }, width: 1800, depth: 900, rotation: 0, seats: 6 })}>
+          <div className="name">Dining table</div><div className="detail">6 seats · 1800×900mm</div>
         </button>
-        <button
-          className="component-card"
-          onClick={() => {
-            addFurniture({
-              id: `furniture-${Date.now()}`,
-              type: 'round-table', label: 'Round Table',
-              position: { x: design.room.width / 2, y: design.room.depth / 2 },
-              width: 1200, depth: 1200, rotation: 0, seats: 4,
-            });
-          }}
-        >
-          <div className="card-icon">⭕</div>
-          <div className="card-title">Round Table</div>
-          <div className="card-subtitle">4 seats</div>
+        <button className="furniture-card" onClick={() => addFurniture({ id: `f-${Date.now()}`, type: 'round-table', label: 'Round Table', position: { x: design.room.width / 2 - 600, y: design.room.depth / 2 - 600 }, width: 1200, depth: 1200, rotation: 0, seats: 4 })}>
+          <div className="name">Round table</div><div className="detail">4 seats · Ø1200mm</div>
         </button>
-        <button
-          className="component-card"
-          onClick={() => {
-            addFurniture({
-              id: `furniture-${Date.now()}`,
-              type: 'sideboard', label: 'Sideboard',
-              position: { x: 200, y: design.room.depth - 600 },
-              width: 1500, depth: 400, rotation: 0,
-            });
-          }}
-        >
-          <div className="card-icon">🗄️</div>
-          <div className="card-title">Sideboard</div>
-          <div className="card-subtitle">1500 × 400mm</div>
+        <button className="furniture-card" onClick={() => addFurniture({ id: `f-${Date.now()}`, type: 'sideboard', label: 'Sideboard', position: { x: 200, y: 200 }, width: 1500, depth: 400, rotation: 0 })}>
+          <div className="name">Sideboard</div><div className="detail">1500×400mm</div>
         </button>
       </div>
     </div>
   );
 }
 
-// ---- MEASURE PANEL ----
-
-// ---- Preset Shape Button ----
-function PresetShapeButton({ label, icon, vertices }: { label: string; icon: string; vertices: { x: number; y: number }[] }) {
-  const setRoomVertices = useStore((s) => s.setRoomVertices);
-  return (
-    <button
-      className="component-card"
-      onClick={() => setRoomVertices(vertices)}
-      style={{ minWidth: 80 }}
-    >
-      <div className="card-icon">{icon}</div>
-      <div className="card-title">{label}</div>
-      <div className="card-subtitle">{vertices.length} walls</div>
-    </button>
-  );
-}
-
+// ---- MEASURE ----
 function MeasurePanel() {
   const design = useStore((s) => s.design);
   const updateRoom = useStore((s) => s.updateRoom);
@@ -208,332 +118,185 @@ function MeasurePanel() {
   const drawingVertices = useStore((s) => s.drawingVertices);
   const cancelDrawing = useStore((s) => s.cancelDrawing);
   const finishDrawingRoom = useStore((s) => s.finishDrawingRoom);
+  const setRoomVertices = useStore((s) => s.setRoomVertices);
 
   return (
     <div>
-      {/* Draw Room Section */}
-      <div className="section-label">Room Shape</div>
-      <div style={{ marginBottom: 20 }}>
-        {isDrawingRoom ? (
-          <div style={{
-            background: 'var(--accent-soft)', border: '1px solid var(--accent)',
-            borderRadius: 'var(--radius-md)', padding: 16,
-          }}>
-            <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: 'var(--accent)' }}>
-              ✏️ Drawing room — {drawingVertices.length} {drawingVertices.length === 1 ? 'corner' : 'corners'} placed
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
-              Click on the canvas to add corners. Click the first point (green) or double-click to close the room. Press Esc to cancel.
-            </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button
-                className="send-btn"
-                style={{ background: 'var(--green)', padding: '8px 16px', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 600, color: '#fff' }}
-                disabled={drawingVertices.length < 3}
-                onClick={() => finishDrawingRoom()}
-              >✓ Finish Room ({drawingVertices.length} corners)</button>
-              <button
-                style={{ padding: '8px 16px', borderRadius: 'var(--radius-sm)', fontSize: 13, fontWeight: 500, color: 'var(--text-secondary)', border: '1px solid var(--border)' }}
-                onClick={() => cancelDrawing()}
-              >✕ Cancel</button>
-            </div>
+      <div className="section-label">Room shape</div>
+      {isDrawingRoom ? (
+        <div style={{ background: 'var(--accent-soft)', border: '1px solid var(--accent)', borderRadius: 'var(--radius-md)', padding: 16, marginBottom: 20 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 8, color: 'var(--accent)' }}>✏️ Drawing room — {drawingVertices.length} {drawingVertices.length === 1 ? 'corner' : 'corners'} placed</div>
+          <div style={{ fontSize: 13, color: 'var(--text-2)', marginBottom: 12 }}>Click on the canvas to add corners. Click the first point or double-click to close. Press Esc to cancel.</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="ai-send" style={{ background: 'var(--success)' }} disabled={drawingVertices.length < 3} onClick={() => finishDrawingRoom()}>✓ Finish ({drawingVertices.length} corners)</button>
+            <button style={{ padding: '8px 16px', borderRadius: 'var(--radius-xs)', fontSize: 13, fontWeight: 500, color: 'var(--text-2)', border: '1px solid var(--border)' }} onClick={() => cancelDrawing()}>✕ Cancel</button>
           </div>
-        ) : (
-          <button
-            onClick={() => startDrawingRoom()}
-            style={{
-              width: '100%', padding: '14px', fontSize: 14, fontWeight: 600,
-              background: 'var(--bg-soft)', border: '1.5px solid var(--border)',
-              borderRadius: 'var(--radius-md)', color: 'var(--text-primary)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            }}
-          >
-            ✏️ Draw Custom Room Shape
+        </div>
+      ) : (
+        <button onClick={() => startDrawingRoom()} style={{ width: '100%', padding: '14px', fontSize: 14, fontWeight: 600, background: 'var(--surface-soft)', border: '1.5px solid var(--border)', borderRadius: 'var(--radius-md)', color: 'var(--text)', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 8 }}>✏️ Draw Custom Room Shape</button>
+      )}
+      <p style={{ fontSize: 12, color: 'var(--text-3)', marginBottom: 20, lineHeight: 1.4 }}>Current room: {design.room.vertices.length}-corner shape.</p>
+
+      <div className="section-label">Preset shapes</div>
+      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 24 }}>
+        {[
+          { label: 'Rectangle', icon: '▭', vertices: [{ x: 0, y: 0 }, { x: 4000, y: 0 }, { x: 4000, y: 3000 }, { x: 0, y: 3000 }] },
+          { label: 'L-Shape', icon: '∟', vertices: [{ x: 0, y: 0 }, { x: 4000, y: 0 }, { x: 4000, y: 2000 }, { x: 2500, y: 2000 }, { x: 2500, y: 3500 }, { x: 0, y: 3500 }] },
+          { label: 'Galley', icon: '∥', vertices: [{ x: 0, y: 0 }, { x: 3000, y: 0 }, { x: 3000, y: 2500 }, { x: 0, y: 2500 }] },
+          { label: 'U-Shape', icon: '∪', vertices: [{ x: 0, y: 0 }, { x: 4000, y: 0 }, { x: 4000, y: 3000 }, { x: 2800, y: 3000 }, { x: 2800, y: 800 }, { x: 1200, y: 800 }, { x: 1200, y: 3000 }, { x: 0, y: 3000 }] },
+          { label: 'Square', icon: '□', vertices: [{ x: 0, y: 0 }, { x: 3500, y: 0 }, { x: 3500, y: 3500 }, { x: 0, y: 3500 }] },
+        ].map((p) => (
+          <button key={p.label} className="furniture-card" style={{ minWidth: 80, textAlign: 'center' }} onClick={() => setRoomVertices(p.vertices)}>
+            <div style={{ fontSize: 24, marginBottom: 4 }}>{p.icon}</div>
+            <div className="name" style={{ fontSize: 13 }}>{p.label}</div>
+            <div className="detail">{p.vertices.length} walls</div>
           </button>
-        )}
-        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 8, lineHeight: 1.4 }}>
-          Draw an L-shape, irregular room, or any polygon. Your current room is a {design.room.vertices.length}-corner shape.
-        </p>
+        ))}
       </div>
 
-      {/* Preset Shapes */}
-      <div className="section-label" style={{ marginTop: 16 }}>Preset Room Shapes</div>
-      <div className="card-grid" style={{ marginBottom: 20 }}>
-        <PresetShapeButton
-          label="Rectangle"
-          icon="▭"
-          vertices={[{ x: 0, y: 0 }, { x: 4000, y: 0 }, { x: 4000, y: 3000 }, { x: 0, y: 3000 }]}
-        />
-        <PresetShapeButton
-          label="L-Shape"
-          icon="∟"
-          vertices={[{ x: 0, y: 0 }, { x: 4000, y: 0 }, { x: 4000, y: 2000 }, { x: 2500, y: 2000 }, { x: 2500, y: 3500 }, { x: 0, y: 3500 }]}
-        />
-        <PresetShapeButton
-          label="Galley"
-          icon="∥"
-          vertices={[{ x: 0, y: 0 }, { x: 3000, y: 0 }, { x: 3000, y: 2500 }, { x: 0, y: 2500 }]}
-        />
-        <PresetShapeButton
-          label="U-Shape"
-          icon="∪"
-          vertices={[{ x: 0, y: 0 }, { x: 4000, y: 0 }, { x: 4000, y: 3000 }, { x: 2800, y: 3000 }, { x: 2800, y: 800 }, { x: 1200, y: 800 }, { x: 1200, y: 3000 }, { x: 0, y: 3000 }]}
-        />
-        <PresetShapeButton
-          label="Square"
-          icon="□"
-          vertices={[{ x: 0, y: 0 }, { x: 3500, y: 0 }, { x: 3500, y: 3500 }, { x: 0, y: 3500 }]}
-        />
-        <PresetShapeButton
-          label="Open Plan"
-          icon="⌐"
-          vertices={[{ x: 0, y: 0 }, { x: 5000, y: 0 }, { x: 5000, y: 4000 }, { x: 2000, y: 4000 }, { x: 2000, y: 2500 }, { x: 0, y: 2500 }]}
-        />
-      </div>
-
-      <div className="section-label">Adjust Dimensions (rectangle mode)</div>
+      <div className="section-label">Dimensions (rectangle mode)</div>
       <div className="measure-row">
         <label>Width</label>
-        <div className="slider-wrap">
-          <input
-            type="range" min={2000} max={8000} step={100}
-            value={design.room.width}
-            onChange={(e) => updateRoom(Number(e.target.value), design.room.depth, design.room.height)}
-          />
-          <div className="value-display">{(design.room.width / 1000).toFixed(1)}m<span className="unit"> ({design.room.width}mm)</span></div>
-        </div>
+        <input type="range" min={2000} max={8000} step={100} value={design.room.width} onChange={(e) => updateRoom(Number(e.target.value), design.room.depth, design.room.height)} />
+        <div className="val">{(design.room.width / 1000).toFixed(1)}m</div>
       </div>
       <div className="measure-row">
         <label>Depth</label>
-        <div className="slider-wrap">
-          <input
-            type="range" min={2000} max={8000} step={100}
-            value={design.room.depth}
-            onChange={(e) => updateRoom(design.room.width, Number(e.target.value), design.room.height)}
-          />
-          <div className="value-display">{(design.room.depth / 1000).toFixed(1)}m<span className="unit"> ({design.room.depth}mm)</span></div>
-        </div>
+        <input type="range" min={2000} max={8000} step={100} value={design.room.depth} onChange={(e) => updateRoom(design.room.width, Number(e.target.value), design.room.height)} />
+        <div className="val">{(design.room.depth / 1000).toFixed(1)}m</div>
       </div>
       <div className="measure-row">
-        <label>Ceiling Height</label>
-        <div className="slider-wrap">
-          <input
-            type="range" min={2200} max={3200} step={50}
-            value={design.room.height}
-            onChange={(e) => updateRoom(design.room.width, design.room.depth, Number(e.target.value))}
-          />
-          <div className="value-display">{(design.room.height / 1000).toFixed(1)}m<span className="unit"> ({design.room.height}mm)</span></div>
-        </div>
+        <label>Ceiling</label>
+        <input type="range" min={2200} max={3200} step={50} value={design.room.height} onChange={(e) => updateRoom(design.room.width, design.room.depth, Number(e.target.value))} />
+        <div className="val">{(design.room.height / 1000).toFixed(2)}m</div>
       </div>
 
-      <div className="section-label" style={{ marginTop: 20 }}>Room Summary</div>
-      <div className="metric-card">
-        <div className="metric-line">
-          <span className="ml">Floor Area</span>
-          <span className="mv">{((design.room.width * design.room.depth) / 1_000_000).toFixed(1)} m²</span>
-        </div>
-        <div className="metric-line">
-          <span className="ml">Wall Perimeter</span>
-          <span className="mv">{(2 * (design.room.width + design.room.depth) / 1000).toFixed(1)}m</span>
-        </div>
-        <div className="metric-line">
-          <span className="ml">Room Volume</span>
-          <span className="mv">{((design.room.width * design.room.depth * design.room.height) / 1_000_000_000).toFixed(1)} m³</span>
-        </div>
+      <div className="section-label">Room summary</div>
+      <div className="summary-grid cols-3">
+        <div className="summary-card"><div className="label">Floor area</div><div className="val">{((design.room.width * design.room.depth) / 1e6).toFixed(1)} m²</div></div>
+        <div className="summary-card"><div className="label">Perimeter</div><div className="val">{(2 * (design.room.width + design.room.depth) / 1000).toFixed(1)} m</div></div>
+        <div className="summary-card"><div className="label">Volume</div><div className="val">{((design.room.width * design.room.depth * design.room.height) / 1e9).toFixed(1)} m³</div></div>
       </div>
-
-      <div className="section-label" style={{ marginTop: 20 }}>Openings (Windows, Doors, Skylights)</div>
-      {design.room.openings.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-text">No openings added yet. In the full version you'll be able to add windows, doors, and skylights by clicking on walls.</div>
-        </div>
-      ) : (
-        <div className="item-list">
-          {design.room.openings.map((o) => (
-            <div key={o.id} className="item-row">
-              <div className="item-info">
-                <div className="item-name">{o.type} — {o.width}mm</div>
-                <div className="item-detail">On {o.wallId} at {o.offset}mm</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
     </div>
   );
 }
 
-// ---- COLOUR PANEL ----
+// ---- COLOURS ----
 function ColourPanel() {
   const colours = useStore((s) => s.design.colours);
   const updateColours = useStore((s) => s.updateColours);
-
-  const colourFields: { key: keyof ColourScheme; label: string }[] = [
-    { key: 'cabinets', label: 'Cabinets' },
-    { key: 'countertops', label: 'Countertops' },
-    { key: 'walls', label: 'Walls' },
-    { key: 'floor', label: 'Floor' },
-    { key: 'backsplash', label: 'Backsplash' },
-    { key: 'handles', label: 'Handles' },
+  const fields: { key: keyof ColourScheme; label: string }[] = [
+    { key: 'cabinets', label: 'Cabinets' }, { key: 'countertops', label: 'Countertops' },
+    { key: 'walls', label: 'Walls' }, { key: 'floor', label: 'Floor' },
+    { key: 'backsplash', label: 'Backsplash' }, { key: 'handles', label: 'Handles' },
   ];
-
   return (
     <div>
-      <div className="section-label">Colour Scheme</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 20 }}>
-        {colourFields.map(({ key, label }) => (
+      <div className="section-label">Colour scheme</div>
+      <div className="colour-grid">
+        {fields.map(({ key, label }) => (
           <div key={key} className="colour-row">
             <div className="colour-swatch" style={{ background: colours[key] }}>
-              <input
-                type="color"
-                value={colours[key]}
-                onChange={(e) => updateColours({ [key]: e.target.value } as Partial<ColourScheme>)}
-              />
+              <input type="color" value={colours[key]} onChange={(e) => updateColours({ [key]: e.target.value } as Partial<ColourScheme>)} />
             </div>
-            <div>
-              <div className="colour-name">{label}</div>
-              <div className="colour-hex">{colours[key].toUpperCase()}</div>
-            </div>
+            <div><div className="colour-name">{label}</div><div className="colour-hex">{colours[key]}</div></div>
           </div>
         ))}
       </div>
-
-      <div className="section-label">Preset Palettes</div>
-      <div className="palette-cards">
-        {Object.entries(COLOUR_PALETTES).map(([key, palette]) => (
-          <div
-            key={key}
-            className="palette-card"
-            onClick={() => updateColours({
-              cabinets: palette.cabinets,
-              countertops: palette.countertops,
-              walls: palette.walls,
-              floor: palette.floor,
-              backsplash: palette.backsplash,
-              handles: palette.handles,
-            })}
-          >
-            <div className="palette-name">{palette.name}</div>
-            <div className="palette-swatches">
-              <div style={{ background: palette.cabinets }} />
-              <div style={{ background: palette.countertops }} />
-              <div style={{ background: palette.walls }} />
-              <div style={{ background: palette.floor }} />
-              <div style={{ background: palette.handles }} />
+      <div className="section-label">Preset palettes</div>
+      <div className="palette-grid">
+        {Object.entries(COLOUR_PALETTES).map(([key, p]) => (
+          <button key={key} className="palette-card" onClick={() => updateColours({ cabinets: p.cabinets, countertops: p.countertops, walls: p.walls, floor: p.floor, backsplash: p.backsplash, handles: p.handles })}>
+            <div className="name">{p.name}</div>
+            <div className="swatches">
+              <div style={{ background: p.cabinets }} /><div style={{ background: p.countertops }} />
+              <div style={{ background: p.walls }} /><div style={{ background: p.floor }} /><div style={{ background: p.handles }} />
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </div>
   );
 }
 
-// ---- ANALYSIS PANEL ----
+// ---- ANALYSIS ----
 function AnalysisPanel() {
   const analysis = useStore((s) => s.analysis);
   const design = useStore((s) => s.design);
 
-  if (!analysis) {
-    return (
-      <div className="empty-state">
-        <div className="empty-text">Analysis will appear once you add some components to your kitchen.</div>
-      </div>
-    );
-  }
+  if (!analysis) return <div style={{ textAlign: 'center', color: 'var(--text-3)', padding: 24 }}>Add some components to see analysis.</div>;
+
+  const light = analysis.light;
+  const lightColorMap: Record<string, string> = { poor: 'var(--error)', adequate: 'var(--warning)', good: 'var(--blue)', excellent: 'var(--success)' };
+  const lightColor = lightColorMap[light.rating];
+  const circumference = 2 * Math.PI * 40;
+  const frac = Math.max(0.02, Math.min(1, light.lightRatio / 0.4));
+  const lightDash = `${(circumference * frac).toFixed(1)} ${circumference.toFixed(1)}`;
+
+  const wt = analysis.flow.workTriangle;
+  const trianglePercent = wt ? Math.max(4, Math.min(100, (wt.perimeter / 6600) * 100)) : 0;
+  const triangleColor = wt?.status === 'ok' ? 'var(--success)' : 'var(--warning)';
+
+  const walkway = analysis.flow.walkwayClearances[0];
+  const walkwayPercent = walkway ? Math.max(4, Math.min(100, (walkway.clearance / 1500) * 100)) : 0;
+  const walkwayColorMap: Record<string, string> = { ok: 'var(--success)', warning: 'var(--warning)', error: 'var(--error)' };
+  const walkwayColor = walkway ? walkwayColorMap[walkway.status] : 'var(--success)';
 
   return (
     <div>
-      {/* Light */}
-      <div className="section-label">Natural Light</div>
-      <div className="metric-card">
-        <div className="metric-title">
-          ☀️ Light Rating
-          <span className={`light-badge ${analysis.light.rating}`}>
-            {analysis.light.rating.charAt(0).toUpperCase() + analysis.light.rating.slice(1)}
-          </span>
+      <div className="analysis-top">
+        <div className="light-gauge-card">
+          <div className="section-label" style={{ alignSelf: 'flex-start', margin: '0 0 10px 0' }}>Natural light</div>
+          <svg viewBox="0 0 100 100" width="118" height="118">
+            <circle cx="50" cy="50" r="40" fill="none" stroke="var(--border)" strokeWidth="10" />
+            <circle cx="50" cy="50" r="40" fill="none" stroke={lightColor} strokeWidth="10" strokeLinecap="round" strokeDasharray={lightDash} transform="rotate(-90 50 50)" />
+            <text x="50" y="47" textAnchor="middle" fontSize="17" fontWeight="700" fill="var(--text)" fontFamily="Newsreader,serif">{Math.round(light.lightRatio * 100)}%</text>
+            <text x="50" y="62" textAnchor="middle" fontSize="8" fill="var(--text-3)" fontFamily="Inter,sans-serif">glazing ratio</text>
+          </svg>
+          <div className={`light-badge ${light.rating}`}>{light.rating.charAt(0).toUpperCase() + light.rating.slice(1)}</div>
         </div>
-        <div className="metric-line">
-          <span className="ml">Floor Area</span>
-          <span className="mv">{analysis.light.roomFloorArea.toFixed(1)} m²</span>
+        <div className="flow-card">
+          <div className="section-label" style={{ margin: '0 0 14px 0' }}>Work triangle & flow</div>
+          {wt && (
+            <>
+              <div className="flow-line"><span className="fl">Sink → Hob → Fridge perimeter</span><span className="fv">{Math.round(wt.perimeter)}mm</span></div>
+              <div className="progress-bar" style={{ marginBottom: 4 }}><div style={{ width: `${trianglePercent}%`, background: triangleColor }} /></div>
+              <div className="progress-note" style={{ marginBottom: 16 }}>Ideal range: 4000–6600mm total, each leg 1200–2700mm</div>
+            </>
+          )}
+          {walkway && (
+            <>
+              <div className="flow-line"><span className="fl">Walkway clearance — {walkway.from} to {walkway.to}</span><span className="fv">{Math.round(walkway.clearance)}mm</span></div>
+              <div className="progress-bar"><div style={{ width: `${walkwayPercent}%`, background: walkwayColor }} /></div>
+              <div className="progress-note" style={{ marginTop: 4 }}>900mm minimum recommended</div>
+            </>
+          )}
         </div>
-        <div className="metric-line">
-          <span className="ml">Glazing Area</span>
-          <span className="mv">{analysis.light.totalGlazingArea.toFixed(2)} m²</span>
-        </div>
-        <div className="metric-line">
-          <span className="ml">Light Ratio</span>
-          <span className="mv">{(analysis.light.lightRatio * 100).toFixed(1)}%</span>
-        </div>
-        {analysis.light.notes.map((note, i) => (
-          <p key={i} style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.5 }}>{note}</p>
-        ))}
       </div>
 
-      {/* Flow */}
-      <div className="section-label">Flow & Ergonomics</div>
-      <div className="metric-card">
-        {analysis.flow.workTriangle && (
-          <>
-            <div className="metric-line">
-              <span className="ml">Work Triangle (sink→fridge→hob)</span>
-              <span className="mv">{Math.round(analysis.flow.workTriangle.perimeter)}mm</span>
-            </div>
-          </>
-        )}
-        {analysis.flow.islandFit && (
-          <div className="metric-line">
-            <span className="ml">Island Fit</span>
-            <span className="mv" style={{ color: analysis.flow.islandFit.fits ? 'var(--green)' : 'var(--red)' }}>
-              {analysis.flow.islandFit.fits ? '✓ Fits' : '✗ Too tight'}
-            </span>
-          </div>
-        )}
-        {analysis.flow.walkwayClearances.map((wc, i) => (
-          <div key={i} className="metric-line">
-            <span className="ml">{wc.from} → {wc.to}</span>
-            <span className="mv" style={{ color: wc.status === 'ok' ? 'var(--green)' : wc.status === 'warning' ? 'var(--amber)' : 'var(--red)' }}>
-              {Math.round(wc.clearance)}mm
-            </span>
-          </div>
-        ))}
-      </div>
-
-      {/* Issues */}
-      <div className="section-label">Issues & Recommendations ({analysis.issues.length})</div>
+      <div className="section-label">Issues & recommendations ({analysis.issues.length})</div>
       {analysis.issues.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">✓</div>
-          <div className="empty-text">No issues detected. Your kitchen layout looks good!</div>
+        <div style={{ background: 'var(--surface-soft)', border: '1px solid var(--border)', borderLeft: '3px solid var(--success)', borderRadius: 10, padding: 14, marginBottom: 9 }}>
+          <div className="msg" style={{ fontSize: 13.5, fontWeight: 600 }}>No issues detected</div>
+          <div className="detail" style={{ fontSize: 12.5, color: 'var(--text-2)' }}>Your layout meets standard ergonomic and safety guidelines.</div>
         </div>
       ) : (
         analysis.issues.map((issue) => (
-          <div key={issue.id} className={`issue-card sev-${issue.severity}`}>
-            <div className="issue-msg">{issue.message}</div>
-            {issue.detail && <div className="issue-detail">{issue.detail}</div>}
-            {issue.fix && <div className="issue-fix">💡 {issue.fix}</div>}
+          <div key={issue.id} className={`issue-card ${issue.severity}`}>
+            <div className="msg">{issue.message}</div>
+            {issue.detail && <div className="detail">{issue.detail}</div>}
+            {issue.fix && <div className="fix">→ {issue.fix}</div>}
           </div>
         ))
       )}
 
-      {/* Summary */}
-      <div className="section-label">Design Summary</div>
-      <div className="metric-card">
-        <div className="metric-line">
-          <span className="ml">Carcass Units</span>
-          <span className="mv">{design.carcasses.length}</span>
-        </div>
-        <div className="metric-line">
-          <span className="ml">Total Carcass Run</span>
-          <span className="mv">{design.carcasses.reduce((s, c) => s + c.size, 0)}mm</span>
-        </div>
-        <div className="metric-line">
-          <span className="ml">Furniture Items</span>
-          <span className="mv">{design.furniture.length}</span>
-        </div>
-        <div className="metric-line">
-          <span className="ml">Islands</span>
-          <span className="mv">{design.islands.length}</span>
-        </div>
+      <div style={{ height: 12 }} />
+      <div className="section-label">Design summary</div>
+      <div className="summary-grid cols-4">
+        <div className="summary-card"><div className="label">Cabinets</div><div className="val">{design.carcasses.length}</div></div>
+        <div className="summary-card"><div className="label">Run length</div><div className="val">{(design.carcasses.reduce((s, c) => s + c.size, 0) / 1000).toFixed(1)}m</div></div>
+        <div className="summary-card"><div className="label">Furniture</div><div className="val">{design.furniture.length}</div></div>
+        <div className="summary-card"><div className="label">Floor area</div><div className="val">{((design.room.width * design.room.depth) / 1e6).toFixed(1)} m²</div></div>
       </div>
     </div>
   );
