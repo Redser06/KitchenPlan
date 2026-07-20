@@ -536,52 +536,6 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
           )}
         </svg>
 
-        {/* Empty state — guide user to draw a room */}
-        {design.carcasses.length === 0 && design.furniture.length === 0 && !isDrawingRoom && (
-          <div className="canvas-empty-state">
-            <h2>Let's design your kitchen</h2>
-            <p>Start by drawing your room. Choose how you want to create it:</p>
-            <div className="empty-actions">
-              <button className="empty-action-btn" onClick={() => useStore.getState().startDrawingRoom()}>
-                <span className="action-icon">👆</span>
-                <div className="action-info">
-                  <div className="action-title">Click corners to draw</div>
-                  <div className="action-desc">Place wall corners one by one — best for precise shapes</div>
-                </div>
-              </button>
-              <button className="empty-action-btn" onClick={() => useStore.getState().startFreehandDraw()}>
-                <span className="action-icon">✏️</span>
-                <div className="action-info">
-                  <div className="action-title">Trace by hand</div>
-                  <div className="action-desc">Draw the outline freehand with mouse or stylus</div>
-                </div>
-              </button>
-              <button className="empty-action-btn" onClick={() => {
-                const input = document.querySelector('.ai-prompt input') as HTMLInputElement;
-                if (input) { input.focus(); input.placeholder = 'e.g. "L-shaped kitchen 4m wide, 3.5m deep, 1.5m cutout"'; }
-              }}>
-                <span className="action-icon">💬</span>
-                <div className="action-info">
-                  <div className="action-title">Describe with AI</div>
-                  <div className="action-desc">Type a description and preview before applying</div>
-                </div>
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Drawing toolbar */}
-        {isDrawingRoom && (
-          <div className="drawing-toolbar">
-            <span className="dt-label">✏️ Drawing room</span>
-            <span className="dt-count">{drawingVertices.length} {drawingVertices.length === 1 ? 'corner' : 'corners'}</span>
-            <button className="dt-btn dt-finish" disabled={drawingVertices.length < 3} onClick={() => finishDrawingRoom()}>✓ Finish</button>
-            <button className="dt-btn dt-cancel" onClick={() => cancelDrawing()}>Cancel</button>
-          </div>
-        )}
-
-
-
       {/* Overlays */}
         <div className="canvas-overlay-top">
           <div className="overlay-badge">{Math.round(scale * 100)}%</div>
@@ -605,6 +559,52 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
            'Click to select · Drag to move · Click a wall to edit its length'}
         </div>
       </div>
+
+      {/* Empty state — guide user to draw a room */}
+            {/* Empty state — guide user to draw a room */}
+      {design.carcasses.length === 0 && design.furniture.length === 0 && !isDrawingRoom && (
+        <div className="canvas-empty-state">
+          <h2>Let's design your kitchen</h2>
+          <p>Start by drawing your room. Choose how you want to create it:</p>
+          <div className="empty-actions">
+            <button className="empty-action-btn" onClick={() => useStore.getState().startDrawingRoom()}>
+            <span className="action-icon">👆</span>
+            <div className="action-info">
+              <div className="action-title">Click corners to draw</div>
+              <div className="action-desc">Place wall corners one by one — best for precise shapes</div>
+            </div>
+            </button>
+            <button className="empty-action-btn" onClick={() => useStore.getState().startFreehandDraw()}>
+            <span className="action-icon">✏️</span>
+            <div className="action-info">
+              <div className="action-title">Trace by hand</div>
+              <div className="action-desc">Draw the outline freehand with mouse or stylus</div>
+            </div>
+            </button>
+            <button className="empty-action-btn" onClick={() => {
+            const input = document.querySelector('.ai-prompt input') as HTMLInputElement;
+            if (input) { input.focus(); input.placeholder = 'e.g. "L-shaped kitchen 4m wide, 3.5m deep, 1.5m cutout"'; }
+            }}>
+            <span className="action-icon">💬</span>
+            <div className="action-info">
+              <div className="action-title">Describe with AI</div>
+              <div className="action-desc">Type a description and preview before applying</div>
+            </div>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Drawing toolbar */}
+            {/* Drawing toolbar */}
+      {isDrawingRoom && (
+        <div className="drawing-toolbar">
+          <span className="dt-label">✏️ Drawing room</span>
+          <span className="dt-count">{drawingVertices.length} {drawingVertices.length === 1 ? 'corner' : 'corners'}</span>
+          <button className="dt-btn dt-finish" disabled={drawingVertices.length < 3} onClick={() => finishDrawingRoom()}>✓ Finish</button>
+          <button className="dt-btn dt-cancel" onClick={() => cancelDrawing()}>Cancel</button>
+        </div>
+      )}
     </div>
   );
 }
