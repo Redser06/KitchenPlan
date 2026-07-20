@@ -261,7 +261,7 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
             {!is3D ? (
               <g>
                 {/* Room floor */}
-                <rect x="0" y="0" width={roomWpx} height={roomHpx} fill={colours.floor} opacity={0.55} rx={3} />
+                <rect x="0" y="0" width={roomWpx} height={roomHpx} fill={colours.floor} opacity={0.35} rx={3} />
 
                 {/* Walls from vertices */}
                 {(design.room.vertices || []).length >= 2 && (design.room.vertices || []).map((v, i) => {
@@ -537,7 +537,7 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
         </svg>
 
         {/* Empty state — guide user to draw a room */}
-        {design.carcasses.length === 0 && design.furniture.length === 0 && !isDrawingRoom && (
+        {design.carcasses.length === 0 && design.furniture.length === 0 && (design.room.vertices || []).length === 0 && !isDrawingRoom && (
           <div className="canvas-empty-state">
             <h2>Let's design your kitchen</h2>
             <p>Start by drawing your room. Choose how you want to create it:</p>

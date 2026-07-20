@@ -31,8 +31,8 @@ export default function App() {
   const history = useStore((s) => s.history);
   const selectedId = useStore((s) => s.selectedId);
 
-  const [scale, setScale] = useState(1);
-  const [position, setPosition] = useState<Vec2>({ x: 150, y: 65 });
+  const [scale, setScale] = useState(1.15);
+  const [position, setPosition] = useState<Vec2>({ x: 220, y: 80 });
   const [viewMode, setViewMode] = useState<ViewMode>('2d');
   const [sheetTab, setSheetTab] = useState<SheetTab>(null);
 
@@ -50,20 +50,58 @@ export default function App() {
     load();
   }, [load]);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
+      const store = useStore.getState();
+      if (e.key === 'Escape') { store.setSelected(null); store.cancelDrawing(); store.setEditingWallId(null); }
+      if ((e.key === 'Delete' || e.key === 'Backspace') && store.selectedId) {
+        e.preventDefault();
+        const id = store.selectedId;
+        if (store.design.carcasses.find((c) => c.id === id)) store.removeCarcass(id);
+        else if (store.design.furniture.find((f) => f.id === id)) store.removeFurniture(id);
+        else if (store.design.room.openings.find((o) => o.id === id)) store.removeOpening(id);
+        else if ((store.design.utilityPoints || []).find((u) => u.id === id)) store.removeUtilityPoint(id);
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); store.undo(); }
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { e.preventDefault(); store.redo(); }
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, []);
+
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
 
   const handleNew = () => {
     const store = useStore.getState();
-    if (confirm('Start a new kitchen design?')) {
+    const choice = confirm('Start fresh with an empty room?\\n\\nClick OK for an empty room, or Cancel to keep your current design.');
+    if (choice) {
       store.setDesign({
-        ...store.design,
         id: `design-${Date.now()}`,
         name: 'New Kitchen',
-        carcasses: [], islands: [], furniture: [],
-        room: { ...store.design.room, openings: [] },
-        updatedAt: Date.now(),
+        room: {
+          id: `room-${Date.now()}`,
+          name: 'Kitchen',
+          width: 3000, depth: 3000, height: 2400,
+          walls: [
+            { id: 'wall-0', start: { x: 0, y: 0 }, end: { x: 3000, y: 0 }, thickness: 120 },
+            { id: 'wall-1', start: { x: 3000, y: 0 }, end: { x: 3000, y: 3000 }, thickness: 120 },
+            { id: 'wall-2', start: { x: 3000, y: 3000 }, end: { x: 0, y: 3000 }, thickness: 120 },
+            { id: 'wall-3', start: { x: 0, y: 3000 }, end: { x: 0, y: 0 }, thickness: 120 },
+          ],
+          openings: [],
+          vertices: [{ x: 0, y: 0 }, { x: 3000, y: 0 }, { x: 3000, y: 3000 }, { x: 0, y: 3000 }],
+          origin: { x: 0, y: 0 },
+        },
+        carcasses: [], islands: [], furniture: [], utilityPoints: [],
+        colours: { cabinets: '#C9B79C', countertops: '#2E2620', walls: '#F8F3EA', floor: '#E4D3BA', backsplash: '#EFE2D0', handles: '#5B4A38' },
+        createdAt: Date.now(), updatedAt: Date.now(),
       });
+      setPosition({ x: 250, y: 100 });
+      setScale(1.2);
     }
   };
 
@@ -73,6 +111,29 @@ export default function App() {
     const a = document.createElement('a');
     a.href = url; a.download = 'kitchen-design.json'; a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleImport = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try {
+          const parsed = JSON.parse(ev.target?.result as string);
+          if (parsed.room && parsed.carcasses) {
+            useStore.getState().setDesign(parsed);
+          } else {
+            alert('Invalid kitchen design file');
+          }
+        } catch { alert('Could not read file'); }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
   };
 
   const showContextPanel = !!selectedId && sheetTab === null;
