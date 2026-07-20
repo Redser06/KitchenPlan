@@ -537,7 +537,7 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
         </svg>
 
         {/* Empty state — guide user to draw a room */}
-        {design.carcasses.length === 0 && design.furniture.length === 0 && (design.room.vertices || []).length === 0 && !isDrawingRoom && (
+        {design.carcasses.length === 0 && design.furniture.length === 0 && !isDrawingRoom && (
           <div className="canvas-empty-state">
             <h2>Let's design your kitchen</h2>
             <p>Start by drawing your room. Choose how you want to create it:</p>
@@ -577,6 +577,34 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
             <span className="dt-count">{drawingVertices.length} {drawingVertices.length === 1 ? 'corner' : 'corners'}</span>
             <button className="dt-btn dt-finish" disabled={drawingVertices.length < 3} onClick={() => finishDrawingRoom()}>✓ Finish</button>
             <button className="dt-btn dt-cancel" onClick={() => cancelDrawing()}>Cancel</button>
+          </div>
+        )}
+
+        {/* Redraw Room button — visible when not drawing and room exists */}
+        {!isDrawingRoom && (design.room.vertices || []).length > 0 && (
+          <div style={{ position: 'absolute', bottom: 14, right: 14, display: 'flex', gap: 8, zIndex: 10 }}>
+            <button
+              onClick={() => useStore.getState().startDrawingRoom()}
+              style={{
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)', padding: '8px 14px',
+                fontSize: 13, fontWeight: 500, color: 'var(--text-2)',
+                boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              ✏️ Redraw Room
+            </button>
+            <button
+              onClick={() => useStore.getState().startFreehandDraw()}
+              style={{
+                background: 'var(--surface)', border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-sm)', padding: '8px 14px',
+                fontSize: 13, fontWeight: 500, color: 'var(--text-2)',
+                boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 6,
+              }}
+            >
+              ✏️ Trace by Hand
+            </button>
           </div>
         )}
 

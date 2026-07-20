@@ -573,10 +573,25 @@ export const useStore = create<KitchenState>((set, get) => ({
       const saved = localStorage.getItem('kitchenplan-design');
       if (saved) {
         const design = JSON.parse(saved) as KitchenDesign;
+        // Migrate old data — ensure all required fields exist
+        if (!design.room.vertices || design.room.vertices.length === 0) {
+          // No vertices — create from walls or dimensions
+          const w = design.room.width || 4000;
+          const d = design.room.depth || 3000;
+          design.room.vertices = [
+            { x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: d }, { x: 0, y: d },
+          ];
+          design.room.walls = wallsFromVertices(design.room.vertices);
+        }
+        if (!design.utilityPoints) design.utilityPoints = [];
+        if (!design.islands) design.islands = [];
+        if (!design.furniture) design.furniture = [];
+        if (!design.colours) design.colours = { cabinets: '#C9B79C', countertops: '#2E2620', walls: '#F8F3EA', floor: '#E4D3BA', backsplash: '#EFE2D0', handles: '#5B4A38' };
         set({ design, analysis: runFullAnalysis(design) });
       }
     } catch (e) {
-      // Ignore load errors
+      // If load fails, clear and use default
+      try { localStorage.removeItem('kitchenplan-design'); } catch {}
     }
   },
 }));

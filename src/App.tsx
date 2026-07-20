@@ -37,16 +37,18 @@ export default function App() {
   const [sheetTab, setSheetTab] = useState<SheetTab>(null);
 
   useEffect(() => {
-    // Clear old localStorage that might not have vertices
+    // Clear old localStorage that might not have utilityPoints (pre-migration data)
     try {
       const saved = localStorage.getItem('kitchenplan-design');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (parsed.room && !parsed.room.vertices) {
+        if (!parsed.utilityPoints) {
           localStorage.removeItem('kitchenplan-design');
         }
       }
-    } catch (e) { }
+    } catch (e) {
+      try { localStorage.removeItem('kitchenplan-design'); } catch {}
+    }
     load();
   }, [load]);
 
