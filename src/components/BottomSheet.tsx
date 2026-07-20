@@ -38,6 +38,9 @@ function ComponentsPanel() {
   const selectedId = useStore((s) => s.selectedId);
   const updateCarcass = useStore((s) => s.updateCarcass);
   const selectedCarcass = design.carcasses.find((c) => c.id === selectedId);
+  const selectedOpeningType = useStore((s) => s.selectedOpeningType);
+  const selectedUtilityType = useStore((s) => s.selectedUtilityType);
+  const isFreehandDrawing = useStore((s) => s.isFreehandDrawing);
 
   const hasSel = !!selectedCarcass;
 
@@ -121,7 +124,7 @@ function ComponentsPanel() {
       <div className="section-label">Draw room by hand</div>
       <div className="chip-row" style={{ marginBottom: 24 }}>
         <button
-          className={`chip ${useStore.getState().isFreehandDrawing ? 'active' : ''}`}
+          className={`chip ${isFreehandDrawing ? 'active' : ''}`}
           onClick={() => useStore.getState().startFreehandDraw()}
         >✏️ Freehand trace (mouse/stylus)</button>
       </div>
