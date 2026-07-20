@@ -261,12 +261,12 @@ input:focus { border-color: var(--accent); }
 /* ---- Empty state overlay ---- */
 .canvas-empty-state {
   position: absolute;
-  top: 50%; left: 32px;
+  top: 50%; left: 20px;
   transform: translateY(-50%);
   text-align: left;
   z-index: 15;
   pointer-events: auto;
-  max-width: 320px;
+  max-width: 300px;
 }
 .canvas-empty-state h2 {
   font-family: 'Newsreader', serif;

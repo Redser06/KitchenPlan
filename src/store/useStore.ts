@@ -562,7 +562,7 @@ export const useStore = create<KitchenState>((set, get) => ({
   persist: () => {
     try {
       const state = get();
-      localStorage.setItem('kitchenplan-design', JSON.stringify(state.design));
+      localStorage.setItem('kitchenplan-design-v2', JSON.stringify(state.design));
     } catch (e) {
       // localStorage might not be available
     }
@@ -570,7 +570,7 @@ export const useStore = create<KitchenState>((set, get) => ({
 
   load: () => {
     try {
-      const saved = localStorage.getItem('kitchenplan-design');
+      const saved = localStorage.getItem('kitchenplan-design-v2');
       if (saved) {
         const design = JSON.parse(saved) as KitchenDesign;
         // Migrate old data — ensure all required fields exist
@@ -591,7 +591,7 @@ export const useStore = create<KitchenState>((set, get) => ({
       }
     } catch (e) {
       // If load fails, clear and use default
-      try { localStorage.removeItem('kitchenplan-design'); } catch {}
+      try { localStorage.removeItem('kitchenplan-design-v2'); } catch {}
     }
   },
 }));

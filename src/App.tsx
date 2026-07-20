@@ -39,15 +39,15 @@ export default function App() {
   useEffect(() => {
     // Clear old localStorage that might not have utilityPoints (pre-migration data)
     try {
-      const saved = localStorage.getItem('kitchenplan-design');
+      const saved = localStorage.getItem('kitchenplan-design-v2');
       if (saved) {
         const parsed = JSON.parse(saved);
         if (!parsed.utilityPoints) {
-          localStorage.removeItem('kitchenplan-design');
+          localStorage.removeItem('kitchenplan-design-v2');
         }
       }
     } catch (e) {
-      try { localStorage.removeItem('kitchenplan-design'); } catch {}
+      try { localStorage.removeItem('kitchenplan-design-v2'); } catch {}
     }
     load();
   }, [load]);

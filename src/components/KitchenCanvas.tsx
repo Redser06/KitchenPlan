@@ -580,33 +580,7 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
           </div>
         )}
 
-        {/* Redraw Room button — visible when not drawing and room exists */}
-        {!isDrawingRoom && (design.room.vertices || []).length > 0 && (
-          <div style={{ position: 'absolute', bottom: 14, right: 14, display: 'flex', gap: 8, zIndex: 10 }}>
-            <button
-              onClick={() => useStore.getState().startDrawingRoom()}
-              style={{
-                background: 'var(--surface)', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)', padding: '8px 14px',
-                fontSize: 13, fontWeight: 500, color: 'var(--text-2)',
-                boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 6,
-              }}
-            >
-              ✏️ Redraw Room
-            </button>
-            <button
-              onClick={() => useStore.getState().startFreehandDraw()}
-              style={{
-                background: 'var(--surface)', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)', padding: '8px 14px',
-                fontSize: 13, fontWeight: 500, color: 'var(--text-2)',
-                boxShadow: 'var(--shadow-sm)', display: 'flex', alignItems: 'center', gap: 6,
-              }}
-            >
-              ✏️ Trace by Hand
-            </button>
-          </div>
-        )}
+
 
       {/* Overlays */}
         <div className="canvas-overlay-top">
