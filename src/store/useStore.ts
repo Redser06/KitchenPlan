@@ -4,10 +4,10 @@
 // ============================================================================
 
 import create from 'zustand';
-import type { KitchenDesign, Carcass, Furniture, Island, ColourScheme, DesignAnalysis, Vec2, Room, Wall } from '../domain/types';
+import type { KitchenDesign, Carcass, Furniture, Island, ColourScheme, DesignAnalysis, Vec2, Room, Wall, Opening, UtilityPoint, UtilityPointType, OpeningType } from '../domain/types';
 import { createEmptyDesign, buildDesignFromIntent } from '../ai/designBuilder';
 import type { DesignIntent } from '../ai/types';
-import { wallsFromVertices, boundingBox, polygonArea } from '../engine/geometry';
+import { wallsFromVertices, boundingBox } from '../engine/geometry';
 import { analyzeFlow } from '../engine/flowAnalyzer';
 import { analyzeLight } from '../engine/lightCalculator';
 
@@ -15,11 +15,16 @@ interface KitchenState {
   design: KitchenDesign;
   analysis: DesignAnalysis | null;
   selectedId: string | null;
-  tool: 'select' | 'place-carcass' | 'place-furniture' | 'place-opening' | 'pan' | 'draw-room';
+  tool: 'select' | 'place-carcass' | 'place-furniture' | 'place-opening' | 'place-utility' | 'pan' | 'draw-room';
   selectedCarcassSize: 200 | 400 | 600 | 800 | 1000;
   drawingVertices: Vec2[];
   isDrawingRoom: boolean;
+  isFreehandDrawing: boolean;
   cursorWorldPos: Vec2 | null;
+  selectedOpeningType: OpeningType | null;
+  selectedUtilityType: UtilityPointType | null;
+  pendingAIPreview: { intent: any; explanation: string; roomPreview: { width: number; depth: number; vertices: Vec2[] } } | null;
+  editingWallId: string | null;
   history: KitchenDesign[];
   historyIndex: number;
 
@@ -46,6 +51,20 @@ interface KitchenState {
   finishDrawingRoom: () => void;
   setRoomVertices: (vertices: Vec2[]) => void;
   addVertexToRoom: (wallIndex: number, point: Vec2) => void;
+  addOpening: (opening: Opening) => void;
+  removeOpening: (id: string) => void;
+  addUtilityPoint: (point: UtilityPoint) => void;
+  removeUtilityPoint: (id: string) => void;
+  setSelectedOpeningType: (t: OpeningType | null) => void;
+  setSelectedUtilityType: (t: UtilityPointType | null) => void;
+  setPendingAIPreview: (preview: KitchenState['pendingAIPreview']) => void;
+  confirmAIPreview: () => void;
+  cancelAIPreview: () => void;
+  startFreehandDraw: () => void;
+  addFreehandPoint: (p: Vec2) => void;
+  finishFreehandDraw: () => void;
+  setEditingWallId: (id: string | null) => void;
+  updateWallLength: (wallId: string, newLength: number) => void;
   setSelectedCarcassSize: (s: KitchenState['selectedCarcassSize']) => void;
   runAnalysis: () => void;
   undo: () => void;
@@ -82,7 +101,12 @@ export const useStore = create<KitchenState>((set, get) => ({
   selectedCarcassSize: 600,
   drawingVertices: [],
   isDrawingRoom: false,
+  isFreehandDrawing: false,
   cursorWorldPos: null,
+  selectedOpeningType: null,
+  selectedUtilityType: null,
+  pendingAIPreview: null,
+  editingWallId: null,
   history: [createEmptyDesign()],
   historyIndex: 0,
 
@@ -360,6 +384,133 @@ export const useStore = create<KitchenState>((set, get) => ({
         updatedAt: Date.now(),
       };
       return { design: newDesign, analysis: runFullAnalysis(newDesign) };
+    });
+    get().persist();
+  },
+
+  addOpening: (opening) => {
+    set((state) => {
+      const newDesign = { ...state.design, room: { ...state.design.room, openings: [...state.design.room.openings, opening] }, updatedAt: Date.now() };
+      const newHistory = state.history.slice(0, state.historyIndex + 1);
+      newHistory.push(newDesign);
+      return { design: newDesign, analysis: runFullAnalysis(newDesign), history: newHistory, historyIndex: newHistory.length - 1, selectedOpeningType: null };
+    });
+    get().persist();
+  },
+
+  removeOpening: (id) => {
+    set((state) => {
+      const newDesign = { ...state.design, room: { ...state.design.room, openings: state.design.room.openings.filter((o) => o.id !== id) }, updatedAt: Date.now() };
+      return { design: newDesign, analysis: runFullAnalysis(newDesign) };
+    });
+    get().persist();
+  },
+
+  addUtilityPoint: (point) => {
+    set((state) => {
+      const newDesign = { ...state.design, utilityPoints: [...(state.design.utilityPoints || []), point], updatedAt: Date.now() };
+      return { design: newDesign, analysis: runFullAnalysis(newDesign), selectedUtilityType: null };
+    });
+    get().persist();
+  },
+
+  removeUtilityPoint: (id) => {
+    set((state) => {
+      const newDesign = { ...state.design, utilityPoints: (state.design.utilityPoints || []).filter((p) => p.id !== id), updatedAt: Date.now() };
+      return { design: newDesign, analysis: runFullAnalysis(newDesign) };
+    });
+    get().persist();
+  },
+
+  setSelectedOpeningType: (t) => set({ selectedOpeningType: t, tool: t ? 'place-opening' : 'select' }),
+  setSelectedUtilityType: (t) => set({ selectedUtilityType: t, tool: t ? 'place-utility' : 'select' }),
+
+  setPendingAIPreview: (preview) => set({ pendingAIPreview: preview }),
+
+  confirmAIPreview: () => {
+    set((state) => {
+      if (!state.pendingAIPreview) return {};
+      const { intent, roomPreview } = state.pendingAIPreview;
+      // Build design from the confirmed intent
+      // For now, just set the room vertices
+      const walls = wallsFromVertices(roomPreview.vertices);
+      const bb = boundingBox(roomPreview.vertices);
+      const newDesign: KitchenDesign = {
+        ...state.design,
+        room: { ...state.design.room, width: roomPreview.width, depth: roomPreview.depth, walls, vertices: roomPreview.vertices, origin: { x: bb.minX, y: bb.minY }, openings: [] },
+        updatedAt: Date.now(),
+      };
+      const newHistory = state.history.slice(0, state.historyIndex + 1);
+      newHistory.push(newDesign);
+      return { design: newDesign, analysis: runFullAnalysis(newDesign), history: newHistory, historyIndex: newHistory.length - 1, pendingAIPreview: null };
+    });
+    get().persist();
+  },
+
+  cancelAIPreview: () => set({ pendingAIPreview: null }),
+
+  startFreehandDraw: () => set({ isFreehandDrawing: true, isDrawingRoom: true, drawingVertices: [], tool: 'draw-room' }),
+  addFreehandPoint: (p) => set((state) => ({ drawingVertices: [...state.drawingVertices, p] })),
+  finishFreehandDraw: () => {
+    set((state) => {
+      if (state.drawingVertices.length < 3) return { isFreehandDrawing: false, isDrawingRoom: false, drawingVertices: [], tool: 'select' };
+      // Simplify the freehand path — keep every Nth point
+      const raw = state.drawingVertices;
+      const simplified: Vec2[] = [];
+      const step = Math.max(1, Math.floor(raw.length / 20));
+      for (let i = 0; i < raw.length; i += step) simplified.push(raw[i]);
+      if (simplified[simplified.length - 1] !== raw[raw.length - 1]) simplified.push(raw[raw.length - 1]);
+      // Snap to grid
+      const snapped = simplified.map((v) => ({ x: Math.round(v.x / 200) * 200, y: Math.round(v.y / 200) * 200 }));
+      // Remove duplicate consecutive points
+      const deduped: Vec2[] = [];
+      for (const v of snapped) {
+        const last = deduped[deduped.length - 1]; if (Math.hypot(last.x - v.x, last.y - v.y) > 100) deduped.push(v);
+      }
+      if (deduped.length < 3) return { isFreehandDrawing: false, isDrawingRoom: false, drawingVertices: [], tool: 'select' };
+      const walls = wallsFromVertices(deduped);
+      const bb = boundingBox(deduped);
+      const newDesign: KitchenDesign = {
+        ...state.design,
+        room: { ...state.design.room, width: bb.width, depth: bb.depth, walls, vertices: deduped, origin: { x: bb.minX, y: bb.minY } },
+        updatedAt: Date.now(),
+      };
+      const newHistory = state.history.slice(0, state.historyIndex + 1);
+      newHistory.push(newDesign);
+      return { design: newDesign, analysis: runFullAnalysis(newDesign), history: newHistory, historyIndex: newHistory.length - 1, isFreehandDrawing: false, isDrawingRoom: false, drawingVertices: [], tool: 'select' };
+    });
+    get().persist();
+  },
+
+  setEditingWallId: (id) => set({ editingWallId: id }),
+
+  updateWallLength: (wallId, newLength) => {
+    set((state) => {
+      const vertices = [...state.design.room.vertices];
+      if (vertices.length < 2) return {};
+      // Find the wall index
+      let wallIdx = -1;
+      for (let i = 0; i < vertices.length; i++) {
+        if (state.design.room.walls[i]?.id === wallId) { wallIdx = i; break; }
+      }
+      if (wallIdx === -1) return {};
+      const start = vertices[wallIdx];
+      const end = vertices[(wallIdx + 1) % vertices.length];
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const currentLen = Math.sqrt(dx * dx + dy * dy);
+      if (currentLen === 0) return {};
+      const ratio = newLength / currentLen;
+      const newEnd = { x: start.x + dx * ratio, y: start.y + dy * ratio };
+      vertices[(wallIdx + 1) % vertices.length] = newEnd;
+      const walls = wallsFromVertices(vertices);
+      const bb = boundingBox(vertices);
+      const newDesign: KitchenDesign = {
+        ...state.design,
+        room: { ...state.design.room, width: bb.width, depth: bb.depth, walls, vertices, origin: { x: bb.minX, y: bb.minY } },
+        updatedAt: Date.now(),
+      };
+      return { design: newDesign, analysis: runFullAnalysis(newDesign), editingWallId: null };
     });
     get().persist();
   },

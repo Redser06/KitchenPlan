@@ -1,8 +1,8 @@
 import React from 'react';
 import type { SheetTab } from '../App';
 import { useStore } from '../store/useStore';
-import { CARCASS_SIZES, CARCASS_DEPTHS, FITTING_CATALOG, APPLIANCE_CATALOG, COLOUR_PALETTES } from '../domain/catalog';
-import type { CarcassSize, FittingType, ApplianceType, ColourScheme } from '../domain/types';
+import { CARCASS_SIZES, CARCASS_DEPTHS, FITTING_CATALOG, APPLIANCE_CATALOG, COLOUR_PALETTES, OPENING_CATALOG, UTILITY_POINT_CATALOG } from '../domain/catalog';
+import type { CarcassSize, FittingType, ApplianceType, ColourScheme, OpeningType, UtilityPointType } from '../domain/types';
 
 interface Props { tab: SheetTab; onClose: () => void; }
 
@@ -93,6 +93,39 @@ function ComponentsPanel() {
         ))}
       </div>
 
+      {/* Openings */}
+      <div className="section-label">Openings (doors, windows, skylights)</div>
+      <div className="chip-row" style={{ marginBottom: 24 }}>
+        {OPENING_CATALOG.map((o) => (
+          <button
+            key={o.type}
+            className={`chip ${selectedOpeningType === o.type ? 'active' : ''}`}
+            onClick={() => useStore.getState().setSelectedOpeningType(selectedOpeningType === o.type ? null : o.type as OpeningType)}
+          >{o.icon} {o.label}</button>
+        ))}
+      </div>
+
+      {/* Utility Points */}
+      <div className="section-label">Plumbing & Electrics</div>
+      <div className="chip-row" style={{ marginBottom: 24 }}>
+        {UTILITY_POINT_CATALOG.map((u) => (
+          <button
+            key={u.type}
+            className={`chip ${selectedUtilityType === u.type ? 'active' : ''}`}
+            onClick={() => useStore.getState().setSelectedUtilityType(selectedUtilityType === u.type ? null : u.type as UtilityPointType)}
+          >{u.icon} {u.label}</button>
+        ))}
+      </div>
+
+      {/* Freehand drawing */}
+      <div className="section-label">Draw room by hand</div>
+      <div className="chip-row" style={{ marginBottom: 24 }}>
+        <button
+          className={`chip ${useStore.getState().isFreehandDrawing ? 'active' : ''}`}
+          onClick={() => useStore.getState().startFreehandDraw()}
+        >✏️ Freehand trace (mouse/stylus)</button>
+      </div>
+
       <div className="section-label">Furniture</div>
       <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
         <button className="furniture-card" onClick={() => addFurniture({ id: `f-${Date.now()}`, type: 'dining-table', label: 'Dining Table', position: { x: design.room.width / 2 - 900, y: design.room.depth / 2 - 450 }, width: 1800, depth: 900, rotation: 0, seats: 6 })}>
@@ -177,6 +210,40 @@ function MeasurePanel() {
         <div className="summary-card"><div className="label">Perimeter</div><div className="val">{(2 * (design.room.width + design.room.depth) / 1000).toFixed(1)} m</div></div>
         <div className="summary-card"><div className="label">Volume</div><div className="val">{((design.room.width * design.room.depth * design.room.height) / 1e9).toFixed(1)} m³</div></div>
       </div>
+
+      <div className="section-label">Openings ({design.room.openings.length})</div>
+      {design.room.openings.length === 0 ? (
+        <p style={{ fontSize: 13, color: 'var(--text-3)', marginBottom: 16 }}>No openings yet. Use Components → Openings to add windows, doors, and skylights.</p>
+      ) : (
+        <div className="item-list" style={{ marginBottom: 20 }}>
+          {design.room.openings.map((o) => (
+            <div key={o.id} className="item-row">
+              <div className="item-info">
+                <div className="item-name">{o.type} — {o.width}mm</div>
+                <div className="item-detail">Wall {o.wallId} at {o.offset}mm</div>
+              </div>
+              <button className="item-delete" onClick={() => useStore.getState().removeOpening(o.id)}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="section-label">Plumbing & Electrics ({(design.utilityPoints || []).length})</div>
+      {(design.utilityPoints || []).length === 0 ? (
+        <p style={{ fontSize: 13, color: 'var(--text-3)' }}>No utility points yet. Use Components → Plumbing & Electrics to add water, power, gas points.</p>
+      ) : (
+        <div className="item-list">
+          {(design.utilityPoints || []).map((up) => (
+            <div key={up.id} className="item-row">
+              <div className="item-info">
+                <div className="item-name">{up.label}</div>
+                <div className="item-detail">At {Math.round(up.position.x)}, {Math.round(up.position.y)}mm</div>
+              </div>
+              <button className="item-delete" onClick={() => useStore.getState().removeUtilityPoint(up.id)}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

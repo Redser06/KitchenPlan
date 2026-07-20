@@ -368,3 +368,39 @@ export function findNearestWall(
 
   return best;
 }
+
+
+// Find the nearest wall segment from a point, returning wall index and projected point
+export function findNearestWallFromVertices(
+  point: Vec2,
+  vertices: Vec2[],
+  threshold = 150,
+): { wallIndex: number; distance: number; projectedPoint: Vec2; wallId: string } | null {
+  if (vertices.length < 2) return null;
+  let best: { wallIndex: number; distance: number; projectedPoint: Vec2; wallId: string } | null = null;
+
+  for (let i = 0; i < vertices.length; i++) {
+    const start = vertices[i];
+    const end = vertices[(i + 1) % vertices.length];
+    const seg: LineSegment = { start, end };
+    const d = pointToSegmentDist(point, seg);
+    if (d < threshold && (!best || d < best.distance)) {
+      const wallVec = sub(end, start);
+      const wallLenSq = len(wallVec) ** 2;
+      if (wallLenSq === 0) continue;
+      const t = Math.max(0, Math.min(1, dot(sub(point, start), wallVec) / wallLenSq));
+      const projected = add(start, scale(wallVec, t));
+      best = { wallIndex: i, distance: d, projectedPoint: projected, wallId: `wall-${i}` };
+    }
+  }
+
+  return best;
+}
+
+// Get wall length by index
+export function wallLengthByIndex(vertices: Vec2[], index: number): number {
+  if (vertices.length < 2 || index < 0 || index >= vertices.length) return 0;
+  const start = vertices[index];
+  const end = vertices[(index + 1) % vertices.length];
+  return dist(start, end);
+}

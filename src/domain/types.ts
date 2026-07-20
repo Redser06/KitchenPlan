@@ -189,6 +189,7 @@ export interface KitchenDesign {
   carcasses: Carcass[];
   islands: Island[];
   furniture: Furniture[];
+  utilityPoints: UtilityPoint[];
   colours: ColourScheme;
   createdAt: number;
   updatedAt: number;
@@ -233,4 +234,31 @@ export interface DesignAnalysis {
   flow: FlowAnalysis;
   light: LightAnalysis;
   issues: AnalysisIssue[];
+}
+
+// --- Utility Points (plumbing, electrics, gas, data) ----------------------
+
+export type UtilityPointType =
+  | 'water-supply'    // cold/hot water supply
+  | 'waste'           // waste/drainage
+  | 'gas'             // gas supply
+  | 'electric'        // electrical outlet
+  | 'electric-heavy'  // high-amperage (oven/hob circuit)
+  | 'data'            // network/data
+  | 'extractor-vent'  // extractor fan vent
+  | 'radiator';       // heating
+
+export interface UtilityPoint {
+  id: string;
+  type: UtilityPointType;
+  label: string;
+  position: Vec2;       // mm from room origin
+  wallId?: string;      // if attached to a wall
+  notes?: string;
+}
+
+// Enhance KitchenDesign to include utility points
+// (added as separate interface for clarity)
+export interface UtilityPoints {
+  utilityPoints: UtilityPoint[];
 }

@@ -283,6 +283,7 @@ export function buildDesignFromIntent(intent: DesignIntent, name = 'Untitled Kit
     islands,
     furniture,
     colours,
+    utilityPoints: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -309,12 +310,12 @@ export function createEmptyDesign(): KitchenDesign {
       openings: [],
       vertices: [{ x: 0, y: 0 }, { x: 4000, y: 0 }, { x: 4000, y: 3000 }, { x: 0, y: 3000 }],
       origin: { x: 0, y: 0 },
-    vertices,
     },
     carcasses: [],
     islands: [],
     furniture: [],
     colours: { ...COLOUR_PALETTES.scandinavian },
+    utilityPoints: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };

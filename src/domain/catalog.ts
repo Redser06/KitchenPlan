@@ -153,3 +153,23 @@ export const ORIENTATION_LIGHT_FACTOR: Record<string, number> = {
   east: 0.8,    // morning sun
   west: 0.85,   // afternoon/evening sun
 };
+
+// --- Utility point catalog -----------------------------------------------
+export const UTILITY_POINT_CATALOG: { type: import('./types').UtilityPointType; label: string; icon: string; description: string; color: string }[] = [
+  { type: 'water-supply',   label: 'Water Supply',    icon: '💧', description: 'Cold/hot water supply point',    color: '#4E7A96' },
+  { type: 'waste',          label: 'Waste / Drain',   icon: '🕳️', description: 'Waste water drainage',            color: '#5B6B7A' },
+  { type: 'gas',            label: 'Gas Point',       icon: '🔥', description: 'Gas supply for hob/cooker',       color: '#C08A3E' },
+  { type: 'electric',       label: 'Electrical Outlet',icon: '⚡', description: 'Standard electrical socket',     color: '#C1602C' },
+  { type: 'electric-heavy', label: 'Heavy Duty Power', icon: '🔌', description: 'High-amperage circuit (oven/hob)', color: '#B94A3B' },
+  { type: 'data',           label: 'Data / Network',  icon: '🌐', description: 'Network/data connection',         color: '#4C7A5B' },
+  { type: 'extractor-vent', label: 'Extractor Vent',  icon: '💨', description: 'Extractor fan vent to exterior',   color: '#8A7A63' },
+  { type: 'radiator',       label: 'Radiator',        icon: '🌡️', description: 'Heating radiator',                color: '#9C6B5B' },
+];
+
+// --- Opening catalog (for placement UI) ----------------------------------
+export const OPENING_CATALOG: { type: import('./types').OpeningType; label: string; icon: string; defaultWidth: number; defaultHeight: number }[] = [
+  { type: 'window',   label: 'Window',   icon: '🪟', defaultWidth: 1200, defaultHeight: 1200 },
+  { type: 'door',     label: 'Door',     icon: '🚪', defaultWidth: 900,  defaultHeight: 2100 },
+  { type: 'archway',  label: 'Archway',  icon: '🚶', defaultWidth: 1000, defaultHeight: 2100 },
+  { type: 'skylight', label: 'Skylight', icon: '🔆', defaultWidth: 800,  defaultHeight: 800 },
+];

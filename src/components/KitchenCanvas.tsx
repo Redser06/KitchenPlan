@@ -1,6 +1,6 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { snapToWall, pointOnWall, snapToRightAngle, dist } from '../engine/geometry';
+import { snapToWall, pointOnWall, snapToRightAngle, dist, findNearestWallFromVertices, wallLengthByIndex } from '../engine/geometry';
 import type { Carcass, Furniture, Vec2 } from '../domain/types';
 import type { ViewMode } from '../App';
 
@@ -35,6 +35,20 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
   const updateDrawingCursor = useStore((s) => s.updateDrawingCursor);
   const cancelDrawing = useStore((s) => s.cancelDrawing);
   const finishDrawingRoom = useStore((s) => s.finishDrawingRoom);
+  const isFreehandDrawing = useStore((s) => s.isFreehandDrawing);
+  const startFreehandDraw = useStore((s) => s.startFreehandDraw);
+  const addFreehandPoint = useStore((s) => s.addFreehandPoint);
+  const finishFreehandDraw = useStore((s) => s.finishFreehandDraw);
+  const selectedOpeningType = useStore((s) => s.selectedOpeningType);
+  const selectedUtilityType = useStore((s) => s.selectedUtilityType);
+  const addOpening = useStore((s) => s.addOpening);
+  const removeOpening = useStore((s) => s.removeOpening);
+  const addUtilityPoint = useStore((s) => s.addUtilityPoint);
+  const removeUtilityPoint = useStore((s) => s.removeUtilityPoint);
+  const editingWallId = useStore((s) => s.editingWallId);
+  const setEditingWallId = useStore((s) => s.setEditingWallId);
+  const updateWallLength = useStore((s) => s.updateWallLength);
+  const utilityPoints = useStore((s) => s.design.utilityPoints || []);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
@@ -84,6 +98,31 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
       if (drawingVertices.length >= 1) vertex = snapToRightAngle(wp, drawingVertices[drawingVertices.length - 1]);
       vertex = { x: Math.round(vertex.x / 200) * 200, y: Math.round(vertex.y / 200) * 200 };
       addDrawingVertex(vertex);
+    } else if (tool === 'place-opening' && selectedOpeningType) {
+      // Find nearest wall and place opening
+      const nearest = findNearestWallFromVertices(wp, design.room.vertices, 300);
+      if (nearest) {
+        const wall = design.room.walls[nearest.wallIndex];
+        if (wall) {
+          const wallStart = wall.start;
+          const offset = Math.round(dist(wallStart, nearest.projectedPoint));
+          addOpening({
+            id: `opening-${Date.now()}`,
+            type: selectedOpeningType,
+            wallId: nearest.wallId,
+            offset,
+            width: selectedOpeningType === 'door' ? 900 : selectedOpeningType === 'skylight' ? 800 : 1200,
+            height: selectedOpeningType === 'door' ? 2100 : selectedOpeningType === 'skylight' ? 800 : 1200,
+          });
+        }
+      }
+    } else if (tool === 'place-utility' && selectedUtilityType) {
+      addUtilityPoint({
+        id: `utility-${Date.now()}`,
+        type: selectedUtilityType,
+        label: selectedUtilityType.replace(/-/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()),
+        position: { x: Math.round(wp.x / 50) * 50, y: Math.round(wp.y / 50) * 50 },
+      });
     } else {
       setSelected(null);
     }
@@ -100,7 +139,12 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
   }, [tool, setSelected, design]);
 
   const onCanvasMouseMove = useCallback((e: React.MouseEvent<SVGElement>) => {
-    if (isDrawingRoom) { const wp = screenToWorld(e.clientX, e.clientY); updateDrawingCursor(wp); }
+    if (isDrawingRoom && !isFreehandDrawing) { const wp = screenToWorld(e.clientX, e.clientY); updateDrawingCursor(wp); }
+    if (isFreehandDrawing && dragState === null && panState === null) {
+      const wp = screenToWorld(e.clientX, e.clientY);
+      const snapped = { x: Math.round(wp.x / 100) * 100, y: Math.round(wp.y / 100) * 100 };
+      addFreehandPoint(snapped);
+    }
     if (dragState) {
       const ds = dragState;
       const dxVB = (e.clientX - ds.startClientX) * (1000 / ds.rectW);
@@ -123,13 +167,23 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
 
   const onCanvasMouseUp = useCallback(() => {
     if (dragState && dragState.moved) useStore.getState().runAnalysis();
+    if (isFreehandDrawing) finishFreehandDraw();
     setDragState(null);
     setPanState(null);
-  }, [dragState]);
+  }, [dragState, isFreehandDrawing, finishFreehandDraw]);
 
-  const onCanvasBackgroundMouseDown = useCallback((e: React.MouseEvent<SVGRectElement>) => {
-    if (tool === 'pan') setPanState({ sx: e.clientX, sy: e.clientY, startPos: { ...position } });
-  }, [tool, position]);
+  const onCanvasMouseDown = useCallback((e: React.MouseEvent<SVGRectElement>) => {
+    if (isFreehandDrawing) {
+      // Start collecting freehand points
+      const wp = screenToWorld(e.clientX, e.clientY);
+      const snapped = { x: Math.round(wp.x / 100) * 100, y: Math.round(wp.y / 100) * 100 };
+      addFreehandPoint(snapped);
+    } else if (tool === 'pan') {
+      setPanState({ sx: e.clientX, sy: e.clientY, startPos: { ...position } });
+    }
+  }, [isFreehandDrawing, tool, position, screenToWorld, addFreehandPoint]);
+
+  const onCanvasBackgroundMouseDown = onCanvasMouseDown;
 
   const onDoubleClick = useCallback(() => {
     if (isDrawingRoom && drawingVertices.length >= 3) finishDrawingRoom();
@@ -150,12 +204,11 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
   };
 
   const wallHpx = toPx(design.room.height * 0.4);
-  const cursorStyle = { display: 'block', cursor: tool === 'pan' ? 'grab' : (tool === 'place-carcass' || tool === 'place-furniture' || tool === 'draw-room') ? 'crosshair' : 'default', width: '100%', height: '100%' };
+  const cursorStyle = { display: 'block', cursor: tool === 'pan' ? 'grab' : (tool === 'place-carcass' || tool === 'place-furniture' || tool === 'draw-room' || tool === 'place-opening' || tool === 'place-utility') ? 'crosshair' : 'default', width: '100%', height: '100%' };
 
   // Canvas box sizing
   const winW = typeof window !== 'undefined' ? window.innerWidth : 1440;
   const winH = typeof window !== 'undefined' ? window.innerHeight : 900;
-  const sheetOpen = useStore((s) => s.tool === 'draw-room' && s.isDrawingRoom); // approximate
   const availW = Math.max(320, winW - 48);
   const availH = Math.max(240, winH - 72 - 68 - 40);
   const ratio = 1000 / 700;
@@ -182,9 +235,51 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
                 <rect x="0" y="0" width={roomWpx} height={roomHpx} fill={colours.floor} opacity={0.55} rx={3} />
 
                 {/* Walls from vertices */}
-                {design.room.vertices.length >= 2 && design.room.vertices.map((v, i) => {
+                {(design.room.vertices || []).length >= 2 && (design.room.vertices || []).map((v, i) => {
                   const next = design.room.vertices[(i + 1) % design.room.vertices.length];
-                  return <line key={`wall-${i}`} x1={toPx(v.x)} y1={toPx(v.y)} x2={toPx(next.x)} y2={toPx(next.y)} stroke="#8A7A63" strokeWidth={7} vectorEffect="non-scaling-stroke" strokeLinecap="round" />;
+                  const wallLen = Math.round(Math.sqrt((next.x - v.x) ** 2 + (next.y - v.y) ** 2));
+                  const mx = (toPx(v.x) + toPx(next.x)) / 2;
+                  const my = (toPx(v.y) + toPx(next.y)) / 2;
+                  const isEditing = editingWallId === `wall-${i}`;
+                  return (
+                    <g key={`wall-${i}`}>
+                      <line x1={toPx(v.x)} y1={toPx(v.y)} x2={toPx(next.x)} y2={toPx(next.y)}
+                        stroke={isEditing ? 'var(--accent)' : '#8A7A63'}
+                        strokeWidth={isEditing ? 9 : 7} vectorEffect="non-scaling-stroke" strokeLinecap="round"
+                        style={{ cursor: 'pointer' }}
+                        onClick={(e) => { e.stopPropagation(); setEditingWallId(`wall-${i}`); }}
+                      />
+                      <text x={mx} y={my - 10 * scale} fontSize={10 * scale} fill={isEditing ? 'var(--accent)' : '#9C9186'}
+                        textAnchor="middle" fontFamily="Inter,sans-serif" pointerEvents="none"
+                        style={{ fontWeight: isEditing ? 600 : 400 }}
+                      >{wallLen}mm</text>
+                    </g>
+                  );
+                })}
+
+                {/* Utility Points */}
+                {(utilityPoints || []).map((up) => {
+                  const isSel = selectedId === up.id;
+                  const colors: Record<string, string> = {
+                    'water-supply': '#4E7A96', 'waste': '#5B6B7A', 'gas': '#C08A3E',
+                    'electric': '#C1602C', 'electric-heavy': '#B94A3B', 'data': '#4C7A5B',
+                    'extractor-vent': '#8A7A63', 'radiator': '#9C6B5B',
+                  };
+                  const color = colors[up.type] || '#888';
+                  return (
+                    <g key={up.id}
+                      transform={`translate(${toPx(up.position.x)} ${toPx(up.position.y)})`}
+                      onClick={(e) => { e.stopPropagation(); setSelected(up.id); }}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      <circle r={10 * scale} fill={color} stroke="#fff" strokeWidth={2 * scale} opacity={0.85} />
+                      <circle r={5 * scale} fill="none" stroke="#fff" strokeWidth={1 * scale} opacity={0.5} />
+                      <text x={14 * scale} y={4 * scale} fontSize={9 * scale} fill={color} fontFamily="Inter,sans-serif" fontWeight={600}>
+                        {up.label}
+                      </text>
+                      {isSel && <circle r={14 * scale} fill="none" stroke={color} strokeWidth={2 * scale} strokeDasharray={`${3 * scale} ${3 * scale}`} />}
+                    </g>
+                  );
                 })}
 
                 {/* Openings */}
@@ -260,12 +355,12 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
               // ---- 3D ----
               <g>
                 {/* Floor from vertices */}
-                {design.room.vertices.length >= 3 && (
+                {design.room.vertices && design.room.vertices.length >= 3 && (
                   <polygon points={ptsToStr(design.room.vertices.map((v) => iso(toPx(v.x), toPx(v.y))))} fill={colours.floor} opacity={0.6} stroke="#D8C9B3" strokeWidth={1} />
                 )}
 
                 {/* Walls from vertices */}
-                {design.room.vertices.map((v, i) => {
+                {(design.room.vertices || []).map((v, i) => {
                   const next = design.room.vertices[(i + 1) % design.room.vertices.length];
                   const p1 = iso(toPx(v.x), toPx(v.y));
                   const p2 = iso(toPx(next.x), toPx(next.y));
@@ -367,9 +462,11 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
         <div className="canvas-hint">
           {tool === 'place-carcass' ? `Click to place a ${selectedCarcassSize}mm cabinet` :
            tool === 'place-furniture' ? 'Click to place furniture' :
+           tool === 'place-opening' ? `Click on a wall to place a ${selectedOpeningType || 'opening'}` :
+           tool === 'place-utility' ? `Click to place a ${selectedUtilityType || 'utility point'}` :
            tool === 'pan' ? 'Drag to pan · Scroll to zoom' :
-           tool === 'draw-room' ? 'Click to add corners · Click first point or double-click to close · Esc to cancel' :
-           'Click to select · Drag to move'}
+           tool === 'draw-room' ? (isFreehandDrawing ? 'Trace the room outline · Release to finish' : 'Click to add corners · Click first point or double-click to close · Esc to cancel') :
+           'Click to select · Drag to move · Click a wall to edit its length'}
         </div>
       </div>
     </div>

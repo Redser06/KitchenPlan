@@ -11,6 +11,17 @@ import type { Vec2 } from './domain/types';
 export type ViewMode = '2d' | '3d';
 export type SheetTab = 'components' | 'measure' | 'colours' | 'analysis' | null;
 
+class ErrorBoundary extends React.Component<{children: React.ReactNode}, {error: string | null}> {
+  state = { error: null as string | null };
+  static getDerivedStateFromError(error: Error) { return { error: error.message + '\n\n' + error.stack }; }
+  render() {
+    if (this.state.error) {
+      return React.createElement('pre', { style: { padding: 20, fontSize: 13, fontFamily: 'monospace', whiteSpace: 'pre-wrap', color: '#B94A3B', background: '#FBEDEA', lineHeight: 1.6 } }, this.state.error);
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const design = useStore((s) => s.design);
   const load = useStore((s) => s.load);
@@ -25,7 +36,19 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('2d');
   const [sheetTab, setSheetTab] = useState<SheetTab>(null);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    // Clear old localStorage that might not have vertices
+    try {
+      const saved = localStorage.getItem('kitchenplan-design');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.room && !parsed.room.vertices) {
+          localStorage.removeItem('kitchenplan-design');
+        }
+      }
+    } catch (e) { }
+    load();
+  }, [load]);
 
   const canUndo = historyIndex > 0;
   const canRedo = historyIndex < history.length - 1;
@@ -55,63 +78,185 @@ export default function App() {
   const showContextPanel = !!selectedId && sheetTab === null;
 
   return (
-    <div className="app">
-      <header className="topbar">
-        <div className="topbar-logo">
-          <div className="topbar-logo-icon">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
-              <path d="M4 13 L12 5 L20 13" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              <rect x="7.5" y="13" width="9" height="7" rx="1" fill="#fff" opacity="0.92"/>
-            </svg>
+    <ErrorBoundary>
+      <div className="app">
+        <header className="topbar">
+          <div className="topbar-logo">
+            <div className="topbar-logo-icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none">
+                <path d="M4 13 L12 5 L20 13" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <rect x="7.5" y="13" width="9" height="7" rx="1" fill="#fff" opacity="0.92"/>
+              </svg>
+            </div>
+            <span className="topbar-logo-text">KitchenPlan</span>
           </div>
-          <span className="topbar-logo-text">KitchenPlan</span>
+
+          <AIPromptBar />
+
+          <div className="view-toggle">
+            <button className={viewMode === '2d' ? 'active' : ''} onClick={() => setViewMode('2d')}>2D</button>
+            <button className={viewMode === '3d' ? 'active' : ''} onClick={() => setViewMode('3d')}>3D</button>
+          </div>
+
+          <div className="topbar-actions">
+            <button className="icon-btn" onClick={() => setScale(s => Math.min(3, s * 1.2))} title="Zoom in">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><line x1="10" y1="4" x2="10" y2="16"/><line x1="4" y1="10" x2="16" y2="10"/></svg>
+            </button>
+            <button className="icon-btn" onClick={() => setScale(s => Math.max(0.4, s / 1.2))} title="Zoom out">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><line x1="4" y1="10" x2="16" y2="10"/></svg>
+            </button>
+            <span className="topbar-divider" />
+            <button className="icon-btn" onClick={undo} disabled={!canUndo} title="Undo">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M6 5 L3 8 L6 11"/><path d="M3 8 H12 a4 4 0 0 1 0 8 h-3"/></svg>
+            </button>
+            <button className="icon-btn" onClick={redo} disabled={!canRedo} title="Redo">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M14 5 L17 8 L14 11"/><path d="M17 8 H8 a4 4 0 0 0 0 8 h3"/></svg>
+            </button>
+            <span className="topbar-divider" />
+            <button className="icon-btn" onClick={handleExport} title="Export">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3 V12"/><path d="M6 9 L10 13 L14 9"/><path d="M4 16 H16"/></svg>
+            </button>
+            <button className="icon-btn" onClick={handleNew} title="New design">
+              <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2.5 H12 L16 6.5 V17 H6 Z"/><path d="M12 2.5 V6.5 H16"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <div className="canvas-area">
+          <ErrorBoundary>
+            <KitchenCanvas scale={scale} position={position} setScale={setScale} setPosition={setPosition} viewMode={viewMode} />
+          </ErrorBoundary>
+          {showContextPanel && <ContextPanel />}
         </div>
 
-        <AIPromptBar />
+        {sheetTab && <BottomSheet tab={sheetTab} onClose={() => setSheetTab(null)} />}
 
-        <div className="view-toggle">
-          <button className={viewMode === '2d' ? 'active' : ''} onClick={() => setViewMode('2d')}>2D</button>
-          <button className={viewMode === '3d' ? 'active' : ''} onClick={() => setViewMode('3d')}>3D</button>
-        </div>
-
-        <div className="topbar-actions">
-          <button className="icon-btn" onClick={() => setScale(s => Math.min(3, s * 1.2))} title="Zoom in">
-            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><line x1="10" y1="4" x2="10" y2="16"/><line x1="4" y1="10" x2="16" y2="10"/></svg>
-          </button>
-          <button className="icon-btn" onClick={() => setScale(s => Math.max(0.4, s / 1.2))} title="Zoom out">
-            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round"><line x1="4" y1="10" x2="16" y2="10"/></svg>
-          </button>
-          <span className="topbar-divider" />
-          <button className="icon-btn" onClick={undo} disabled={!canUndo} title="Undo">
-            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M6 5 L3 8 L6 11"/><path d="M3 8 H12 a4 4 0 0 1 0 8 h-3"/></svg>
-          </button>
-          <button className="icon-btn" onClick={redo} disabled={!canRedo} title="Redo">
-            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M14 5 L17 8 L14 11"/><path d="M17 8 H8 a4 4 0 0 0 0 8 h3"/></svg>
-          </button>
-          <span className="topbar-divider" />
-          <button className="icon-btn" onClick={handleExport} title="Export">
-            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3 V12"/><path d="M6 9 L10 13 L14 9"/><path d="M4 16 H16"/></svg>
-          </button>
-          <button className="icon-btn" onClick={handleNew} title="New design">
-            <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2.5 H12 L16 6.5 V17 H6 Z"/><path d="M12 2.5 V6.5 H16"/><line x1="8" y1="11" x2="14" y2="11"/><line x1="11" y1="8" x2="11" y2="14"/></svg>
-          </button>
-        </div>
-      </header>
-
-      <div className="canvas-area">
-        <KitchenCanvas scale={scale} position={position} setScale={setScale} setPosition={setPosition} viewMode={viewMode} />
-        {showContextPanel && <ContextPanel />}
+        <BottomBar activeTab={sheetTab} onTabChange={setSheetTab} />
       </div>
+    </ErrorBoundary>
+  );
+}
 
-      {sheetTab && <BottomSheet tab={sheetTab} onClose={() => setSheetTab(null)} />}
 
-      <BottomBar activeTab={sheetTab} onTabChange={setSheetTab} />
-    </div>
+// ---- AI Preview Modal ----
+function AIPreviewModal() {
+  const pendingAIPreview = useStore((s) => s.pendingAIPreview);
+  const confirmAIPreview = useStore((s) => s.confirmAIPreview);
+  const cancelAIPreview = useStore((s) => s.cancelAIPreview);
+
+  if (!pendingAIPreview) return null;
+  const { roomPreview, explanation } = pendingAIPreview;
+
+  // Render preview SVG
+  const MM_TO_PX = 0.12;
+  const vertices = roomPreview.vertices;
+  const bb = vertices.length > 0 ? {
+    minX: Math.min(...vertices.map((v: any) => v.x)),
+    minY: Math.min(...vertices.map((v: any) => v.y)),
+    maxX: Math.max(...vertices.map((v: any) => v.x)),
+    maxY: Math.max(...vertices.map((v: any) => v.y)),
+  } : { minX: 0, minY: 0, maxX: 4000, maxY: 3000 };
+  const w = (bb.maxX - bb.minX) * MM_TO_PX;
+  const h = (bb.maxY - bb.minY) * MM_TO_PX;
+  const pts = vertices.map((v: any) => `${(v.x - bb.minX) * MM_TO_PX},${(v.y - bb.minY) * MM_TO_PX}`).join(' ');
+
+  return React.createElement('div', {
+    style: {
+      position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+      background: 'rgba(43,36,32,0.4)', zIndex: 1000,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      animation: 'kp-fade-in 0.2s ease',
+    },
+    onClick: cancelAIPreview,
+  },
+    React.createElement('div', {
+      style: {
+        background: 'var(--surface)', borderRadius: 'var(--radius-lg)',
+        boxShadow: '0 24px 64px rgba(0,0,0,0.2)', padding: 28,
+        maxWidth: 520, width: '90%',
+      },
+      onClick: (e: any) => e.stopPropagation(),
+    },
+      React.createElement('h2', {
+        style: { fontFamily: 'Newsreader, serif', fontSize: 22, fontWeight: 600, marginBottom: 8 },
+      }, 'Room Preview'),
+      React.createElement('p', {
+        style: { fontSize: 14, color: 'var(--text-2)', marginBottom: 20, lineHeight: 1.5 },
+      }, explanation),
+      // SVG preview
+      React.createElement('div', {
+        style: {
+          background: 'var(--bg)', borderRadius: 'var(--radius-md)',
+          padding: 20, marginBottom: 20, display: 'flex', justifyContent: 'center',
+        },
+      },
+        React.createElement('svg', {
+          viewBox: `0 0 ${Math.max(w + 40, 200)} ${Math.max(h + 40, 150)}`,
+          width: '100%', style: { maxWidth: 400, height: 'auto' },
+        },
+          React.createElement('polygon', {
+            points: pts,
+            fill: 'var(--accent-soft)', stroke: 'var(--accent)', strokeWidth: 2,
+          }),
+          // Vertex markers
+          ...vertices.map((v: any, i: number) => React.createElement('circle', {
+            key: i,
+            cx: (v.x - bb.minX) * MM_TO_PX, cy: (v.y - bb.minY) * MM_TO_PX,
+            r: 4, fill: i === 0 ? 'var(--success)' : 'var(--accent)',
+          })),
+          // Wall labels
+          ...vertices.map((v: any, i: number) => {
+            const next = vertices[(i + 1) % vertices.length];
+            const mx = ((v.x - bb.minX) + (next.x - bb.minX)) / 2 * MM_TO_PX;
+            const my = ((v.y - bb.minY) + (next.y - bb.minY)) / 2 * MM_TO_PX;
+            const len = Math.round(Math.sqrt((next.x - v.x) ** 2 + (next.y - v.y) ** 2));
+            return React.createElement('text', {
+              key: `lbl-${i}`, x: mx, y: my - 6, fontSize: 10,
+              fill: 'var(--text-2)', textAnchor: 'middle', fontFamily: 'Inter, sans-serif',
+            }, `${len}mm`);
+          }),
+        ),
+      ),
+      // Stats
+      React.createElement('div', {
+        style: { display: 'flex', gap: 16, marginBottom: 24 },
+      },
+        React.createElement('div', { style: { flex: 1 } },
+          React.createElement('div', { style: { fontSize: 12, color: 'var(--text-3)', marginBottom: 3 } }, 'Shape'),
+          React.createElement('div', { style: { fontFamily: 'Newsreader, serif', fontSize: 17, fontWeight: 600 } }, `${vertices.length} corners`),
+        ),
+        React.createElement('div', { style: { flex: 1 } },
+          React.createElement('div', { style: { fontSize: 12, color: 'var(--text-3)', marginBottom: 3 } }, 'Floor area'),
+          React.createElement('div', { style: { fontFamily: 'Newsreader, serif', fontSize: 17, fontWeight: 600 } },
+            `${((roomPreview.width * roomPreview.depth) / 1e6).toFixed(1)} m²`),
+        ),
+      ),
+      // Actions
+      React.createElement('div', { style: { display: 'flex', gap: 12 } },
+        React.createElement('button', {
+          onClick: cancelAIPreview,
+          style: {
+            flex: 1, padding: '12px 20px', borderRadius: 'var(--radius-sm)',
+            fontSize: 14, fontWeight: 600, color: 'var(--text-2)',
+            border: '1px solid var(--border)', background: 'var(--surface-soft)',
+          },
+        }, 'Cancel'),
+        React.createElement('button', {
+          onClick: confirmAIPreview,
+          style: {
+            flex: 1, padding: '12px 20px', borderRadius: 'var(--radius-sm)',
+            fontSize: 14, fontWeight: 600, color: '#fff',
+            background: 'var(--accent)', border: 'none',
+          },
+        }, '✓ Apply Room Shape'),
+      ),
+    ),
   );
 }
 
 function AIPromptBar() {
   const generateFromIntent = useStore((s) => s.generateFromIntent);
+  const setPendingAIPreview = useStore((s) => s.setPendingAIPreview);
   const design = useStore((s) => s.design);
   const updateRoom = useStore((s) => s.updateRoom);
   const [input, setInput] = useState('');
@@ -124,14 +269,24 @@ function AIPromptBar() {
     if (!input.trim() || busy) return;
     setBusy(true); setFeedback(null); setShowSuggestions(false);
     try {
-      const match = input.match(/(\d+(?:\.\d+)?)\s*m\s*[x×]\s*(\d+(?:\.\d+)?)\s*m/i);
-      if (match) {
-        const w = Math.round(parseFloat(match[1]) * 1000);
-        const d = Math.round(parseFloat(match[2]) * 1000);
-        updateRoom(w, d, design.room.height);
-        setFeedback(`Resized your room to ${match[1]}m × ${match[2]}m. Your cabinets stayed in place — nudge anything that now overlaps.`);
+      const result = await provider.interpretDesign(input, design);
+      if (result.intent.roomShape) {
+        // Show preview before applying
+        const store = useStore.getState();
+        store.setPendingAIPreview({
+          intent: result.intent,
+          explanation: result.explanation,
+          roomPreview: {
+            width: result.intent.roomDimensions?.width || 4000,
+            depth: result.intent.roomDimensions?.depth || 3000,
+            vertices: result.intent.roomShape.vertices,
+          },
+        });
+      } else if (result.intent.roomDimensions) {
+        const rd = result.intent.roomDimensions;
+        updateRoom(rd.width, rd.depth, rd.height);
+        setFeedback(`Resized your room to ${(rd.width/1000).toFixed(1)}m × ${(rd.depth/1000).toFixed(1)}m.`);
       } else {
-        const result = await provider.interpretDesign(input, design);
         generateFromIntent(result.intent, `AI: ${input.slice(0, 40)}`);
         setFeedback(result.explanation);
       }
