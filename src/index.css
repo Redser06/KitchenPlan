@@ -257,3 +257,139 @@ input:focus { border-color: var(--accent); }
   max-width: 520px;
   width: 90%;
 }
+
+/* ---- Empty state overlay ---- */
+.canvas-empty-state {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  z-index: 15;
+  pointer-events: auto;
+  max-width: 440px;
+}
+.canvas-empty-state h2 {
+  font-family: 'Newsreader', serif;
+  font-size: 28px;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+.canvas-empty-state p {
+  font-size: 14px;
+  color: var(--text-3);
+  margin-bottom: 28px;
+  line-height: 1.5;
+}
+.empty-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+}
+.empty-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 24px;
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text);
+  min-width: 280px;
+  transition: all 0.2s;
+  box-shadow: var(--shadow-sm);
+}
+.empty-action-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.empty-action-btn .action-icon {
+  font-size: 22px;
+  flex-shrink: 0;
+}
+.empty-action-btn .action-info {
+  text-align: left;
+  flex: 1;
+}
+.empty-action-btn .action-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.empty-action-btn .action-desc {
+  font-size: 12px;
+  color: var(--text-3);
+  font-weight: 400;
+}
+
+/* ---- Drawing toolbar (floating on canvas) ---- */
+.drawing-toolbar {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 20;
+  animation: kp-fade-in 0.2s ease;
+}
+.drawing-toolbar .dt-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.drawing-toolbar .dt-count {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.drawing-toolbar .dt-btn {
+  padding: 6px 14px;
+  border-radius: var(--radius-xs);
+  font-size: 13px;
+  font-weight: 600;
+}
+.drawing-toolbar .dt-finish {
+  background: var(--success);
+  color: #fff;
+}
+.drawing-toolbar .dt-finish:hover { opacity: 0.9; }
+.drawing-toolbar .dt-finish:disabled { opacity: 0.4; }
+.drawing-toolbar .dt-cancel {
+  background: transparent;
+  color: var(--text-3);
+  border: 1px solid var(--border);
+}
+.drawing-toolbar .dt-cancel:hover { background: var(--hover); }
+
+/* ---- Vertex handles (draggable wall corners) ---- */
+.vertex-handle {
+  cursor: grab;
+}
+.vertex-handle:active {
+  cursor: grabbing;
+}
+.vertex-handle-hit {
+  cursor: pointer;
+  opacity: 0;
+}
+.vertex-handle-hit:hover {
+  opacity: 0.3;
+}
+
+/* ---- Wall midpoint insert indicator ---- */
+.wall-midpoint {
+  cursor: copy;
+}
+.wall-midpoint:hover circle {
+  opacity: 1;
+}

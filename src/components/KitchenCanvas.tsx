@@ -49,6 +49,11 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
   const setEditingWallId = useStore((s) => s.setEditingWallId);
   const updateWallLength = useStore((s) => s.updateWallLength);
   const utilityPoints = useStore((s) => s.design.utilityPoints || []);
+  const updateRoomVertex = useStore((s) => s.updateRoomVertex);
+  const addVertexToRoom = useStore((s) => s.addVertexToRoom);
+  const [hoveredVertex, setHoveredVertex] = useState<number | null>(null);
+  const [hoveredWall, setHoveredWall] = useState<number | null>(null);
+  const [vertexDrag, setVertexDrag] = useState<{ index: number; startClientX: number; startClientY: number; startPos: Vec2; rectW: number; rectH: number } | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
@@ -128,6 +133,21 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
     }
   }, [tool, selectedCarcassSize, drawingVertices, addCarcass, setSelected, setTool, addDrawingVertex, finishDrawingRoom, screenToWorld]);
 
+  const startVertexDrag = useCallback((e: React.MouseEvent, vertexIndex: number) => {
+    if (tool !== 'select') return;
+    e.stopPropagation();
+    const rect = containerRef.current!.getBoundingClientRect();
+    const v = design.room.vertices[vertexIndex];
+    setVertexDrag({
+      index: vertexIndex,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startPos: { ...v },
+      rectW: rect.width,
+      rectH: rect.height,
+    });
+  }, [tool, design.room.vertices]);
+
   const startDrag = useCallback((e: React.MouseEvent, id: string, type: string) => {
     if (tool !== 'select') return;
     e.stopPropagation();
@@ -163,6 +183,14 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
       const dyVB = (e.clientY - panState.sy) * (700 / rect.height);
       setPosition({ x: panState.startPos.x + dxVB, y: panState.startPos.y + dyVB });
     }
+    if (vertexDrag) {
+      const vd = vertexDrag;
+      const dxVB = (e.clientX - vd.startClientX) * (1000 / vd.rectW);
+      const dyVB = (e.clientY - vd.startClientY) * (700 / vd.rectH);
+      const dxMm = dxVB / (scale * MM_TO_PX);
+      const dyMm = dyVB / (scale * MM_TO_PX);
+      updateRoomVertex(vd.index, { x: vd.startPos.x + dxMm, y: vd.startPos.y + dyMm });
+    }
   }, [isDrawingRoom, dragState, panState, scale, screenToWorld, updateDrawingCursor, updateCarcass, updateFurniture, updateIsland, setPosition]);
 
   const onCanvasMouseUp = useCallback(() => {
@@ -170,6 +198,7 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
     if (isFreehandDrawing) finishFreehandDraw();
     setDragState(null);
     setPanState(null);
+    setVertexDrag(null);
   }, [dragState, isFreehandDrawing, finishFreehandDraw]);
 
   const onCanvasMouseDown = useCallback((e: React.MouseEvent<SVGRectElement>) => {
@@ -278,6 +307,67 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
                         {up.label}
                       </text>
                       {isSel && <circle r={14 * scale} fill="none" stroke={color} strokeWidth={2 * scale} strokeDasharray={`${3 * scale} ${3 * scale}`} />}
+                    </g>
+                  );
+                })}
+
+                {/* Vertex handles (draggable wall corners) */}
+                {tool === 'select' && (design.room.vertices || []).map((v, i) => {
+                  const isHovered = hoveredVertex === i;
+                  const isDragging = vertexDrag?.index === i;
+                  return (
+                    <g key={`vh-${i}`}>
+                      {/* Hit area */}
+                      <circle
+                        cx={toPx(v.x)} cy={toPx(v.y)} r={20 * scale}
+                        fill="transparent"
+                        className="vertex-handle-hit"
+                        onMouseEnter={() => setHoveredVertex(i)}
+                        onMouseLeave={() => setHoveredVertex(null)}
+                        onMouseDown={(e) => startVertexDrag(e, i)}
+                      />
+                      {/* Visible handle */}
+                      <circle
+                        cx={toPx(v.x)} cy={toPx(v.y)}
+                        r={(isHovered || isDragging ? 8 : 5) * scale}
+                        fill={isDragging ? 'var(--accent)' : isHovered ? '#fff' : 'var(--surface)'}
+                        stroke="var(--accent)"
+                        strokeWidth={2 * scale}
+                        className="vertex-handle"
+                        pointerEvents="none"
+                      />
+                    </g>
+                  );
+                })}
+
+                {/* Wall midpoint indicators (click to insert vertex) */}
+                {tool === 'select' && (design.room.vertices || []).map((v, i) => {
+                  const next = design.room.vertices[(i + 1) % design.room.vertices.length];
+                  const mx = (toPx(v.x) + toPx(next.x)) / 2;
+                  const my = (toPx(v.y) + toPx(next.y)) / 2;
+                  const isHovered = hoveredWall === i;
+                  return (
+                    <g key={`wm-${i}`}>
+                      <circle
+                        cx={mx} cy={my} r={15 * scale}
+                        fill="transparent"
+                        className="wall-midpoint"
+                        onMouseEnter={() => setHoveredWall(i)}
+                        onMouseLeave={() => setHoveredWall(null)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const midX = (v.x + next.x) / 2;
+                          const midY = (v.y + next.y) / 2;
+                          addVertexToRoom(i, { x: midX, y: midY });
+                        }}
+                      />
+                      {isHovered && (
+                        <g pointerEvents="none">
+                          <circle cx={mx} cy={my} r={10 * scale} fill="var(--surface)" stroke="var(--accent)" strokeWidth={1.5 * scale} />
+                          <line x1={mx - 4 * scale} y1={my} x2={mx + 4 * scale} y2={my} stroke="var(--accent)" strokeWidth={1.5 * scale} />
+                          <line x1={mx} y1={my - 4 * scale} x2={mx} y2={my + 4 * scale} stroke="var(--accent)" strokeWidth={1.5 * scale} />
+                        </g>
+                      )}
                     </g>
                   );
                 })}
@@ -446,7 +536,51 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
           )}
         </svg>
 
-        {/* Overlays */}
+        {/* Empty state — guide user to draw a room */}
+        {design.carcasses.length === 0 && design.furniture.length === 0 && !isDrawingRoom && (
+          <div className="canvas-empty-state">
+            <h2>Let's design your kitchen</h2>
+            <p>Start by drawing your room. Choose how you want to create it:</p>
+            <div className="empty-actions">
+              <button className="empty-action-btn" onClick={() => useStore.getState().startDrawingRoom()}>
+                <span className="action-icon">👆</span>
+                <div className="action-info">
+                  <div className="action-title">Click corners to draw</div>
+                  <div className="action-desc">Place wall corners one by one — best for precise shapes</div>
+                </div>
+              </button>
+              <button className="empty-action-btn" onClick={() => useStore.getState().startFreehandDraw()}>
+                <span className="action-icon">✏️</span>
+                <div className="action-info">
+                  <div className="action-title">Trace by hand</div>
+                  <div className="action-desc">Draw the outline freehand with mouse or stylus</div>
+                </div>
+              </button>
+              <button className="empty-action-btn" onClick={() => {
+                const input = document.querySelector('.ai-prompt input') as HTMLInputElement;
+                if (input) { input.focus(); input.placeholder = 'e.g. "L-shaped kitchen 4m wide, 3.5m deep, 1.5m cutout"'; }
+              }}>
+                <span className="action-icon">💬</span>
+                <div className="action-info">
+                  <div className="action-title">Describe with AI</div>
+                  <div className="action-desc">Type a description and preview before applying</div>
+                </div>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Drawing toolbar */}
+        {isDrawingRoom && (
+          <div className="drawing-toolbar">
+            <span className="dt-label">✏️ Drawing room</span>
+            <span className="dt-count">{drawingVertices.length} {drawingVertices.length === 1 ? 'corner' : 'corners'}</span>
+            <button className="dt-btn dt-finish" disabled={drawingVertices.length < 3} onClick={() => finishDrawingRoom()}>✓ Finish</button>
+            <button className="dt-btn dt-cancel" onClick={() => cancelDrawing()}>Cancel</button>
+          </div>
+        )}
+
+      {/* Overlays */}
         <div className="canvas-overlay-top">
           <div className="overlay-badge">{Math.round(scale * 100)}%</div>
           <div className="overlay-badge">{(design.room.width / 1000).toFixed(1)}m × {(design.room.depth / 1000).toFixed(1)}m</div>

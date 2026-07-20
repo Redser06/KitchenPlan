@@ -51,6 +51,7 @@ interface KitchenState {
   finishDrawingRoom: () => void;
   setRoomVertices: (vertices: Vec2[]) => void;
   addVertexToRoom: (wallIndex: number, point: Vec2) => void;
+  updateRoomVertex: (index: number, position: Vec2) => void;
   addOpening: (opening: Opening) => void;
   removeOpening: (id: string) => void;
   addUtilityPoint: (point: UtilityPoint) => void;
@@ -386,6 +387,24 @@ export const useStore = create<KitchenState>((set, get) => ({
       return { design: newDesign, analysis: runFullAnalysis(newDesign) };
     });
     get().persist();
+  },
+
+  updateRoomVertex: (index, position) => {
+    set((state) => {
+      const vertices = [...state.design.room.vertices];
+      if (index < 0 || index >= vertices.length) return {};
+      // Snap to grid
+      const snapped = { x: Math.round(position.x / 50) * 50, y: Math.round(position.y / 50) * 50 };
+      vertices[index] = snapped;
+      const walls = wallsFromVertices(vertices);
+      const bb = boundingBox(vertices);
+      const newDesign: KitchenDesign = {
+        ...state.design,
+        room: { ...state.design.room, width: bb.width, depth: bb.depth, walls, vertices, origin: { x: bb.minX, y: bb.minY } },
+        updatedAt: Date.now(),
+      };
+      return { design: newDesign, analysis: runFullAnalysis(newDesign) };
+    });
   },
 
   addOpening: (opening) => {
