@@ -1,7 +1,26 @@
 import React from 'react';
 import { useStore } from '../store/useStore';
-import { CARCASS_SIZES, CARCASS_DEPTHS, FITTING_CATALOG, APPLIANCE_CATALOG } from '../domain/catalog';
-import type { CarcassSize, FittingType, ApplianceType } from '../domain/types';
+
+const CARCASS_SIZES = [200, 400, 600, 800, 1000];
+const CARCASS_DEPTHS = [500, 550, 600, 650];
+const FITTING_OPTIONS = [
+  { value: 'plain', label: '— Plain cupboard —' },
+  { value: 'drawer', label: 'Drawer bank' }, { value: 'cutlery', label: 'Cutlery drawer' },
+  { value: 'pullout', label: 'Pull-out shelf' }, { value: 'spice', label: 'Spice rack' },
+  { value: 'carousel', label: 'Corner carousel' }, { value: 'larder', label: 'Larder unit' },
+  { value: 'wine', label: 'Wine rack' }, { value: 'bin', label: 'Bin pull-out' },
+  { value: 'plate', label: 'Plate rack' }, { value: 'garage', label: 'Appliance garage (tambour)' },
+];
+const APPLIANCE_OPTIONS = [
+  { value: '', label: '— None —' },
+  { value: 'hob', label: 'Induction hob' }, { value: 'oven', label: 'Built-in oven' },
+  { value: 'sink', label: 'Sink — Undermount' }, { value: 'sink-belfast', label: 'Sink — Belfast' },
+  { value: 'sink-farm', label: 'Sink — Farmhouse' },
+  { value: 'fridge', label: 'Integrated fridge' }, { value: 'dishwasher', label: 'Dishwasher' },
+  { value: 'rangehood', label: 'Extractor hood' }, { value: 'winecooler', label: 'Wine cooler' },
+  { value: 'microwave', label: 'Microwave' }, { value: 'washer', label: 'Washing machine' },
+];
+const fixtureLabels: Record<string, string> = { door: 'Door', window: 'Window', socket: 'Socket', switch: 'Light switch', water: 'Water supply', waste: 'Waste point', pendant: 'Pendant light', downlight: 'Recessed downlight' };
 
 export default function ContextPanel() {
   const design = useStore((s) => s.design);
@@ -11,17 +30,24 @@ export default function ContextPanel() {
   const removeCarcass = useStore((s) => s.removeCarcass);
   const updateFurniture = useStore((s) => s.updateFurniture);
   const removeFurniture = useStore((s) => s.removeFurniture);
+  const removeFixture = useStore((s) => s.removeFixture);
 
-  const carcass = design.carcasses.find((c) => c.id === selectedId);
-  const furniture = design.furniture.find((f) => f.id === selectedId);
+  const carcass = design.carcasses.find((c: any) => c.id === selectedId);
+  const furniture = design.furniture.find((f: any) => f.id === selectedId);
+  const fixture = design.fixtures.find((f: any) => f.id === selectedId);
 
-  if (!carcass && !furniture) return null;
+  if (!carcass && !furniture && !fixture) return null;
 
-  const DeleteIcon = () => (
-    <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M4 6 H16"/><path d="M8 6 V4.3 H12 V6"/><path d="M6 6 L6.8 16.2 a1 1 0 0 0 1 0.8 h4.4 a1 1 0 0 0 1-0.8 L14 6"/>
-    </svg>
-  );
+  if (fixture) {
+    return (
+      <div className="context-panel">
+        <h3>{fixtureLabels[fixture.type] || fixture.type}</h3>
+        <div className="subtitle">{fixture.wallIndex !== undefined ? `Wall ${fixture.wallIndex}` : `Floor position`}</div>
+        {fixture.width && <div className="field"><label>Width</label><input type="number" value={fixture.width} onChange={(e) => useStore.setState((s: any) => { const d = JSON.parse(JSON.stringify(s.design)); const f = d.fixtures.find((fx: any) => fx.id === fixture.id); if (f) f.width = Number(e.target.value); return { design: d }; })} /></div>}
+        <button className="delete-btn" onClick={() => { removeFixture(fixture.id); setSelected(null); }}>🗑 Delete fixture</button>
+      </div>
+    );
+  }
 
   if (furniture) {
     return (
@@ -33,10 +59,8 @@ export default function ContextPanel() {
           <div className="field"><label>Width (mm)</label><input type="number" step={50} value={furniture.width} onChange={(e) => updateFurniture(furniture.id, { width: Number(e.target.value) })} /></div>
           <div className="field"><label>Depth (mm)</label><input type="number" step={50} value={furniture.depth} onChange={(e) => updateFurniture(furniture.id, { depth: Number(e.target.value) })} /></div>
         </div>
-        {furniture.seats !== undefined && (
-          <div className="field"><label>Seats</label><input type="number" min={2} max={12} value={furniture.seats} onChange={(e) => updateFurniture(furniture.id, { seats: Number(e.target.value) })} /></div>
-        )}
-        <button className="delete-btn" onClick={() => { removeFurniture(furniture.id); setSelected(null); }}><DeleteIcon /> Delete item</button>
+        {furniture.seats !== undefined && <div className="field"><label>Seats</label><input type="number" min={2} max={12} value={furniture.seats} onChange={(e) => updateFurniture(furniture.id, { seats: Number(e.target.value) })} /></div>}
+        <button className="delete-btn" onClick={() => { removeFurniture(furniture.id); setSelected(null); }}>🗑 Delete item</button>
       </div>
     );
   }
@@ -45,51 +69,16 @@ export default function ContextPanel() {
     return (
       <div className="context-panel">
         <h3>{carcass.label || `${carcass.size}mm Unit`}</h3>
-        <div className="subtitle">
-          {carcass.size} × {carcass.depth}mm
-          {carcass.appliance ? ` · ${carcass.appliance.label}` : ''}
-          {carcass.fittings[0]?.type !== 'plain' ? ` · ${carcass.fittings[0].label}` : ''}
-        </div>
+        <div className="subtitle">{carcass.size} × {carcass.depth}mm{carcass.applianceLabel ? ` · ${carcass.applianceLabel}` : ''}{carcass.fittingLabel ? ` · ${carcass.fittingLabel}` : ''}</div>
         <div className="field-row">
-          <div className="field"><label>Width</label>
-            <select value={carcass.size} onChange={(e) => updateCarcass(carcass.id, { size: Number(e.target.value) as CarcassSize })}>
-              {CARCASS_SIZES.map((s) => <option key={s} value={s}>{s}mm</option>)}
-            </select>
-          </div>
-          <div className="field"><label>Depth</label>
-            <select value={carcass.depth} onChange={(e) => updateCarcass(carcass.id, { depth: Number(e.target.value) as any })}>
-              {CARCASS_DEPTHS.map((d) => <option key={d} value={d}>{d}mm</option>)}
-            </select>
-          </div>
+          <div className="field"><label>Width</label><select value={carcass.size} onChange={(e) => updateCarcass(carcass.id, { size: Number(e.target.value) as any })}>{CARCASS_SIZES.map(s => <option key={s} value={s}>{s}mm</option>)}</select></div>
+          <div className="field"><label>Depth</label><select value={carcass.depth} onChange={(e) => updateCarcass(carcass.id, { depth: Number(e.target.value) as any })}>{CARCASS_DEPTHS.map(d => <option key={d} value={d}>{d}mm</option>)}</select></div>
         </div>
-        <div className="field"><label>Mount type</label>
-          <select value={carcass.mount} onChange={(e) => { const mount = e.target.value as any; updateCarcass(carcass.id, { mount, height: mount === 'tall' ? 850 : 720 }); }}>
-            <option value="floor">Floor unit</option><option value="wall">Wall unit</option><option value="tall">Tall unit (larder / oven)</option>
-          </select>
-        </div>
+        <div className="field"><label>Mount type</label><select value={carcass.mount} onChange={(e) => updateCarcass(carcass.id, { mount: e.target.value as any })}><option value="floor">Floor unit</option><option value="wall">Wall unit</option><option value="tall">Tall unit</option></select></div>
         <div className="field"><label>Label</label><input type="text" value={carcass.label || ''} placeholder={`${carcass.size}mm Unit`} onChange={(e) => updateCarcass(carcass.id, { label: e.target.value })} /></div>
-        <div className="field"><label>Fitting</label>
-          <select value={carcass.fittings[0]?.type || 'plain'} onChange={(e) => {
-            const fitType = e.target.value as FittingType;
-            const cat = FITTING_CATALOG.find((f) => f.type === fitType);
-            updateCarcass(carcass.id, { fittings: [{ id: `fitting-${Date.now()}`, type: fitType, label: cat?.label || 'Plain', quantity: fitType === 'drawer' ? 3 : fitType === 'shelf' ? 2 : 1 }] });
-          }}>
-            <option value="plain">— Plain cupboard —</option>
-            {FITTING_CATALOG.filter((f) => f.type !== 'plain').map((f) => <option key={f.type} value={f.type}>{f.label}</option>)}
-          </select>
-        </div>
-        <div className="field"><label>Appliance</label>
-          <select value={carcass.appliance?.type || ''} onChange={(e) => {
-            const apType = e.target.value as ApplianceType;
-            if (!apType) { updateCarcass(carcass.id, { appliance: undefined }); return; }
-            const cat = APPLIANCE_CATALOG.find((a) => a.type === apType);
-            updateCarcass(carcass.id, { appliance: { id: `appliance-${Date.now()}`, type: apType, label: cat?.label || apType, width: carcass.size, integrated: cat?.integrated ?? true } });
-          }}>
-            <option value="">— None —</option>
-            {APPLIANCE_CATALOG.map((a) => <option key={a.type} value={a.type}>{a.label}</option>)}
-          </select>
-        </div>
-        <button className="delete-btn" onClick={() => { removeCarcass(carcass.id); setSelected(null); }}><DeleteIcon /> Delete unit</button>
+        <div className="field"><label>Fitting</label><select value={carcass.fittingType} onChange={(e) => { const opt = FITTING_OPTIONS.find(o => o.value === e.target.value); updateCarcass(carcass.id, { fittingType: e.target.value, fittingLabel: opt?.label.replace('— ', '') || '' }); }}>{FITTING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+        <div className="field"><label>Appliance</label><select value={carcass.applianceType || ''} onChange={(e) => { const val = e.target.value; const opt = APPLIANCE_OPTIONS.find(o => o.value === val); updateCarcass(carcass.id, { applianceType: val || null, applianceLabel: val ? opt?.label || val : null }); }}>{APPLIANCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+        <button className="delete-btn" onClick={() => { removeCarcass(carcass.id); setSelected(null); }}>🗑 Delete unit</button>
       </div>
     );
   }

@@ -1,597 +1,259 @@
 // ============================================================================
-// KitchenPlan — Zustand Store
-// Central state: design, analysis, AI, undo/redo, persistence.
+// KitchenPlan — Zustand Store (v3: fixtures, materials, walk mode, export)
 // ============================================================================
 
 import create from 'zustand';
-import type { KitchenDesign, Carcass, Furniture, Island, ColourScheme, DesignAnalysis, Vec2, Room, Wall, Opening, UtilityPoint, UtilityPointType, OpeningType } from '../domain/types';
-import { createEmptyDesign, buildDesignFromIntent } from '../ai/designBuilder';
-import type { DesignIntent } from '../ai/types';
-import { wallsFromVertices, boundingBox } from '../engine/geometry';
-import { analyzeFlow } from '../engine/flowAnalyzer';
-import { analyzeLight } from '../engine/lightCalculator';
+import type { KitchenDesign, Carcass, Furniture, Fixture, Vec2, DesignAnalysis, Materials, ColourScheme } from '../domain/types';
+
+function defaultDesign(): KitchenDesign {
+  return {
+    room: { points: [{ x: 0, y: 0 }, { x: 4200, y: 0 }, { x: 4200, y: 3200 }, { x: 0, y: 3200 }], height: 2400 },
+    fixtures: [
+      { id: 'fx1', type: 'window', wallIndex: 0, t: 0.167, width: 1200 },
+      { id: 'fx2', type: 'door', wallIndex: 0, t: 0.595, width: 900 },
+      { id: 'fx3', type: 'socket', wallIndex: 1, t: 0.3 },
+      { id: 'fx4', type: 'socket', wallIndex: 1, t: 0.7 },
+      { id: 'fx5', type: 'water', position: { x: 2350, y: 2900 } },
+      { id: 'fx6', type: 'waste', position: { x: 2450, y: 2900 } },
+    ],
+    carcasses: [
+      { id: 'c1', size: 600, depth: 600, mount: 'floor', position: { x: 200, y: 2600 }, rotation: 0, label: 'Drawer Unit', fittingType: 'drawer', fittingLabel: 'Drawer Bank', applianceType: null, applianceLabel: null },
+      { id: 'c2', size: 600, depth: 600, mount: 'floor', position: { x: 800, y: 2600 }, rotation: 0, label: '', fittingType: 'plain', fittingLabel: '', applianceType: 'hob', applianceLabel: 'Induction Hob' },
+      { id: 'c3', size: 600, depth: 600, mount: 'floor', position: { x: 1400, y: 2600 }, rotation: 0, label: '', fittingType: 'plain', fittingLabel: '', applianceType: null, applianceLabel: null },
+      { id: 'c4', size: 800, depth: 600, mount: 'floor', position: { x: 2000, y: 2600 }, rotation: 0, label: '', fittingType: 'plain', fittingLabel: '', applianceType: 'sink', applianceLabel: 'Sink — Undermount' },
+      { id: 'c5', size: 600, depth: 600, mount: 'floor', position: { x: 2800, y: 2600 }, rotation: 0, label: 'Dishwasher Housing', fittingType: 'plain', fittingLabel: '', applianceType: 'dishwasher', applianceLabel: 'Dishwasher' },
+      { id: 'c6', size: 600, depth: 600, mount: 'tall', position: { x: 3400, y: 2600 }, rotation: 0, label: 'Tall Fridge Housing', fittingType: 'larder', fittingLabel: 'Larder Unit', applianceType: 'fridge', applianceLabel: 'Integrated Fridge' },
+    ],
+    furniture: [
+      { id: 'f1', type: 'dining-table', label: 'Dining Table', position: { x: 1450, y: 1350 }, width: 1800, depth: 900, rotation: 0, seats: 6 },
+    ],
+    colours: { cabinets: '#C9B79C', countertops: '#2E2620', walls: '#F8F3EA', floor: '#E4D3BA', backsplash: '#EFE2D0', handles: '#5B4A38' },
+    materials: { cabinetFinish: 'Shaker', countertopMaterial: 'Black Granite', flooringStyle: 'Natural Oak', backsplashStyle: 'Plain' },
+  };
+}
+
+function cloneDesign(d: KitchenDesign): KitchenDesign { return JSON.parse(JSON.stringify(d)); }
+
+// --- Analysis ---
+function polygonArea(pts: Vec2[]): number {
+  let a = 0; const n = pts.length;
+  for (let i = 0; i < n; i++) { const p1 = pts[i], p2 = pts[(i + 1) % n]; a += p1.x * p2.y - p2.x * p1.y; }
+  return Math.abs(a) / 2;
+}
+
+function computeAnalysis(design: KitchenDesign): DesignAnalysis {
+  const room = design.room, carcasses = design.carcasses, furniture = design.furniture, fixtures = design.fixtures;
+  const floorAreaM2 = polygonArea(room.points) / 1e6;
+  const glazingAreaM2 = fixtures.filter((f) => f.type === 'window').reduce((s, f) => s + (f.width! * 1200) / 1e6, 0);
+  const lightRatio = floorAreaM2 > 0 ? glazingAreaM2 / floorAreaM2 : 0;
+  let rating = 'poor';
+  if (lightRatio >= 0.3) rating = 'excellent'; else if (lightRatio >= 0.2) rating = 'good'; else if (lightRatio >= 0.1) rating = 'adequate';
+  const light = { floorAreaM2, glazingAreaM2, lightRatio, rating };
+
+  const sinkC = carcasses.find((c) => c.applianceType === 'sink');
+  const hobC = carcasses.find((c) => c.applianceType === 'hob');
+  const fridgeC = carcasses.find((c) => c.applianceType === 'fridge' || c.applianceType === 'fridge-american');
+  let triangle: any = null;
+  if (sinkC && hobC && fridgeC) {
+    const ctr = (c: Carcass) => ({ x: c.position.x + c.size / 2, y: c.position.y + c.depth / 2 });
+    const s = ctr(sinkC), h = ctr(hobC), f = ctr(fridgeC);
+    const d = (a: Vec2, b: Vec2) => Math.hypot(a.x - b.x, a.y - b.y);
+    const perimeter = d(s, h) + d(h, f) + d(f, s);
+    const status = (perimeter > 6600 || [d(s,h), d(h,f), d(f,s)].some(l => l < 1200 || l > 2700)) ? 'warning' : 'ok';
+    triangle = { sink: s, hob: h, fridge: f, perimeter, status };
+  }
+
+  let walkway: any = null;
+  if (furniture.length > 0 && carcasses.length > 0) {
+    const runFrontY = Math.min(...carcasses.map((c) => c.position.y));
+    const table = furniture[0];
+    const clearance = runFrontY - (table.position.y + table.depth);
+    walkway = { clearance, status: clearance < 600 ? 'error' : clearance < 900 ? 'warning' : 'ok' };
+  }
+
+  const issues: any[] = [];
+  if (triangle && triangle.status === 'warning')
+    issues.push({ id: 'triangle', severity: 'warning', message: 'Work triangle is outside the ideal range', detail: `Perimeter ${Math.round(triangle.perimeter)}mm (ideal 4000–6600mm)`, fix: 'Reposition the sink, hob, or fridge.' });
+  if (walkway && walkway.status !== 'ok')
+    issues.push({ id: 'walkway', severity: walkway.status, message: 'Tight clearance behind the dining table', detail: `${Math.round(walkway.clearance)}mm gap — 900mm minimum recommended`, fix: `Move the table ${Math.max(0, Math.round(900 - walkway.clearance))}mm toward the opposite wall.` });
+  if (rating === 'poor')
+    issues.push({ id: 'light', severity: 'warning', message: 'Natural light is limited', detail: 'Glazing area is below 10% of floor area.', fix: 'Add a window from the Fixtures tab.' });
+
+  // Plumbing validation
+  const sinkCarcasses = carcasses.filter((c) => c.applianceType === 'sink');
+  const waterFixtures = fixtures.filter((f) => f.type === 'water');
+  const wasteFixtures = fixtures.filter((f) => f.type === 'waste');
+  sinkCarcasses.forEach((c) => {
+    const ctr = { x: c.position.x + c.size / 2, y: c.position.y + c.depth / 2 };
+    const nd = (list: Fixture[]) => list.length === 0 ? Infinity : Math.min(...list.map((f) => Math.hypot(f.position!.x - ctr.x, f.position!.y - ctr.y)));
+    if (nd(waterFixtures) > 1500 || nd(wasteFixtures) > 1500)
+      issues.push({ id: 'plumbing-' + c.id, severity: 'warning', message: 'Sink is missing nearby plumbing', detail: `${c.label || 'Sink'} has no water/waste within 1.5m.`, fix: 'Add Water supply and Waste point near this sink.' });
+  });
+
+  // Socket validation
+  if (carcasses.filter((c) => c.applianceType).length > 0 && fixtures.filter((f) => f.type === 'socket').length === 0)
+    issues.push({ id: 'sockets', severity: 'warning', message: 'No electrical sockets placed', detail: 'You have appliances but no sockets.', fix: 'Add sockets near your appliance run.' });
+
+  if (issues.length === 0) issues.push({ id: 'ok', severity: 'ok', message: 'No issues detected', detail: 'Your layout meets standard guidelines.', fix: null });
+
+  return { light, triangle, walkway, issues };
+}
+
+export type Screen = 'editor' | 'room-setup';
+export type ViewMode = '2d' | '3d' | 'walk';
+export type SheetTab = 'components' | 'measure' | 'materials' | 'fixtures' | 'analysis' | null;
+export type Tool = 'select' | 'pan' | 'place-carcass' | 'place-furniture' | 'place-door' | 'place-window' | 'place-socket' | 'place-switch' | 'place-water' | 'place-waste' | 'place-light-pendant' | 'place-light-downlight';
 
 interface KitchenState {
+  screen: Screen;
   design: KitchenDesign;
   analysis: DesignAnalysis | null;
   selectedId: string | null;
-  tool: 'select' | 'place-carcass' | 'place-furniture' | 'place-opening' | 'place-utility' | 'pan' | 'draw-room';
-  selectedCarcassSize: 200 | 400 | 600 | 800 | 1000;
-  drawingVertices: Vec2[];
-  isDrawingRoom: boolean;
-  isFreehandDrawing: boolean;
-  cursorWorldPos: Vec2 | null;
-  selectedOpeningType: OpeningType | null;
-  selectedUtilityType: UtilityPointType | null;
-  pendingAIPreview: { intent: any; explanation: string; roomPreview: { width: number; depth: number; vertices: Vec2[] } } | null;
-  editingWallId: string | null;
+  tool: Tool;
+  selectedCarcassSize: Carcass['size'];
+  viewMode: ViewMode;
+  walkIndex: number;
+  sheetTab: SheetTab;
+  scale: number;
+  position: Vec2;
   history: KitchenDesign[];
   historyIndex: number;
+  roomDraft: { points: Vec2[] };
+  selectedCornerIndex: number | null;
+  selectedWallIndex: number | null;
+  showExportPanel: boolean;
+  shareLinkPublic: boolean;
+  linkCopied: boolean;
+  collaborators: { id: number; name: string; email: string; role: string }[];
+  inviteEmail: string;
 
   // Actions
   setDesign: (d: KitchenDesign) => void;
-  generateFromIntent: (intent: DesignIntent, name?: string) => void;
-  updateRoom: (width: number, depth: number, height: number) => void;
-  addCarcass: (c: Carcass) => void;
-  updateCarcass: (id: string, updates: Partial<Carcass>) => void;
+  updateCarcass: (id: string, patch: Partial<Carcass>) => void;
   removeCarcass: (id: string) => void;
-  addFurniture: (f: Furniture) => void;
-  updateFurniture: (id: string, updates: Partial<Furniture>) => void;
+  addCarcass: (c: Carcass) => void;
+  updateFurniture: (id: string, patch: Partial<Furniture>) => void;
   removeFurniture: (id: string) => void;
-  addIsland: (i: Island) => void;
-  updateIsland: (id: string, updates: Partial<Island>) => void;
-  removeIsland: (id: string) => void;
-  updateColours: (c: Partial<ColourScheme>) => void;
+  addFurniture: (f: Furniture) => void;
+  removeFixture: (id: string) => void;
+  addFixture: (f: Fixture) => void;
+  updateColours: (patch: Partial<ColourScheme>) => void;
+  updateMaterials: (patch: Partial<Materials>) => void;
+  updateRoomHeight: (h: number) => void;
+  setScreen: (s: Screen) => void;
   setSelected: (id: string | null) => void;
-  setTool: (t: KitchenState['tool']) => void;
-  startDrawingRoom: () => void;
-  addDrawingVertex: (v: Vec2) => void;
-  updateDrawingCursor: (v: Vec2 | null) => void;
-  cancelDrawing: () => void;
-  finishDrawingRoom: () => void;
-  setRoomVertices: (vertices: Vec2[]) => void;
-  addVertexToRoom: (wallIndex: number, point: Vec2) => void;
-  updateRoomVertex: (index: number, position: Vec2) => void;
-  addOpening: (opening: Opening) => void;
-  removeOpening: (id: string) => void;
-  addUtilityPoint: (point: UtilityPoint) => void;
-  removeUtilityPoint: (id: string) => void;
-  setSelectedOpeningType: (t: OpeningType | null) => void;
-  setSelectedUtilityType: (t: UtilityPointType | null) => void;
-  setPendingAIPreview: (preview: KitchenState['pendingAIPreview']) => void;
-  confirmAIPreview: () => void;
-  cancelAIPreview: () => void;
-  startFreehandDraw: () => void;
-  addFreehandPoint: (p: Vec2) => void;
-  finishFreehandDraw: () => void;
-  setEditingWallId: (id: string | null) => void;
-  updateWallLength: (wallId: string, newLength: number) => void;
-  setSelectedCarcassSize: (s: KitchenState['selectedCarcassSize']) => void;
-  runAnalysis: () => void;
+  setTool: (t: Tool) => void;
+  setSelectedCarcassSize: (s: Carcass['size']) => void;
+  setViewMode: (v: ViewMode) => void;
+  setWalkIndex: (i: number) => void;
+  setSheetTab: (t: SheetTab) => void;
+  setScale: (s: number) => void;
+  setPosition: (p: Vec2) => void;
+  setRoomDraft: (points: Vec2[]) => void;
+  setSelectedCornerIndex: (i: number | null) => void;
+  setSelectedWallIndex: (i: number | null) => void;
+  confirmRoomDraft: () => void;
+  setShowExportPanel: (v: boolean) => void;
+  setShareLinkPublic: (v: boolean) => void;
+  setLinkCopied: (v: boolean) => void;
+  setInviteEmail: (e: string) => void;
+  inviteCollaborator: () => void;
+  removeCollaborator: (id: number) => void;
+  setCollaboratorRole: (id: number, role: string) => void;
+  restoreVersion: (idx: number) => void;
   undo: () => void;
   redo: () => void;
+  addAmericanFridge: () => void;
   persist: () => void;
   load: () => void;
 }
 
-function runFullAnalysis(design: KitchenDesign): DesignAnalysis {
-  const flow = analyzeFlow(design);
-  const light = analyzeLight(design);
-  const issues = [...flow.issues];
-
-  // Light-based issues
-  if (light.rating === 'poor') {
-    issues.push({
-      id: 'light-poor',
-      severity: 'warning',
-      category: 'light',
-      message: 'Poor natural light in this kitchen',
-      detail: light.notes.join(' '),
-      fix: 'Add skylights, enlarge windows, or add glazed doors.',
-    });
-  }
-
-  return { flow, light, issues };
+function commit(state: any, newDesign: KitchenDesign) {
+  const history = state.history.slice(0, state.historyIndex + 1);
+  history.push(cloneDesign(newDesign));
+  return { design: newDesign, analysis: computeAnalysis(newDesign), history, historyIndex: history.length - 1 };
 }
 
 export const useStore = create<KitchenState>((set, get) => ({
-  design: createEmptyDesign(),
+  screen: 'editor',
+  design: defaultDesign(),
   analysis: null,
   selectedId: null,
   tool: 'select',
   selectedCarcassSize: 600,
-  drawingVertices: [],
-  isDrawingRoom: false,
-  isFreehandDrawing: false,
-  cursorWorldPos: null,
-  selectedOpeningType: null,
-  selectedUtilityType: null,
-  pendingAIPreview: null,
-  editingWallId: null,
-  history: [createEmptyDesign()],
+  viewMode: '2d',
+  walkIndex: 0,
+  sheetTab: null,
+  scale: 1,
+  position: { x: 150, y: 65 },
+  history: [cloneDesign(defaultDesign())],
   historyIndex: 0,
+  roomDraft: { points: [...defaultDesign().room.points] },
+  selectedCornerIndex: null,
+  selectedWallIndex: null,
+  showExportPanel: false,
+  shareLinkPublic: false,
+  linkCopied: false,
+  collaborators: [
+    { id: 1, name: 'You', email: 'owner@you.com', role: 'Owner' },
+    { id: 2, name: 'Jamie Oliver-Smith', email: 'jamie@example.com', role: 'Editor' },
+  ],
+  inviteEmail: '',
 
-  setDesign: (d) => {
-    set((state) => {
-      const newHistory = state.history.slice(0, state.historyIndex + 1);
-      newHistory.push(d);
-      return {
-        design: d,
-        analysis: runFullAnalysis(d),
-        history: newHistory,
-        historyIndex: newHistory.length - 1,
-      };
-    });
-    get().persist();
-  },
+  setDesign: (d) => set((s) => commit(s, d)),
+  updateCarcass: (id, patch) => set((s) => { const d = cloneDesign(s.design); const c = d.carcasses.find((c) => c.id === id); if (c) Object.assign(c, patch); return { design: d, analysis: computeAnalysis(d) }; }),
+  removeCarcass: (id) => set((s) => { const d = cloneDesign(s.design); d.carcasses = d.carcasses.filter((c) => c.id !== id); return { design: d, analysis: computeAnalysis(d), selectedId: s.selectedId === id ? null : s.selectedId }; }),
+  addCarcass: (c) => set((s) => { const d = cloneDesign(s.design); d.carcasses.push(c); return commit(s, d); }),
+  updateFurniture: (id, patch) => set((s) => { const d = cloneDesign(s.design); const f = d.furniture.find((f) => f.id === id); if (f) Object.assign(f, patch); return { design: d, analysis: computeAnalysis(d) }; }),
+  removeFurniture: (id) => set((s) => { const d = cloneDesign(s.design); d.furniture = d.furniture.filter((f) => f.id !== id); return { design: d, analysis: computeAnalysis(d), selectedId: s.selectedId === id ? null : s.selectedId }; }),
+  addFurniture: (f) => set((s) => { const d = cloneDesign(s.design); d.furniture.push(f); return commit(s, d); }),
+  removeFixture: (id) => set((s) => { const d = cloneDesign(s.design); d.fixtures = d.fixtures.filter((f) => f.id !== id); return { design: d, analysis: computeAnalysis(d), selectedId: s.selectedId === id ? null : s.selectedId }; }),
+  addFixture: (f) => set((s) => { const d = cloneDesign(s.design); d.fixtures.push(f); return commit(s, d); }),
+  updateColours: (patch) => set((s) => { const d = cloneDesign(s.design); d.colours = { ...d.colours, ...patch }; return { design: d, analysis: computeAnalysis(d) }; }),
+  updateMaterials: (patch) => set((s) => { const d = cloneDesign(s.design); d.materials = { ...d.materials, ...patch }; return { design: d, analysis: computeAnalysis(d) }; }),
+  updateRoomHeight: (h) => set((s) => { const d = cloneDesign(s.design); d.room = { ...d.room, height: h }; return { design: d, analysis: computeAnalysis(d) }; }),
 
-  generateFromIntent: (intent, name) => {
-    const design = buildDesignFromIntent(intent, name || 'AI Generated Kitchen');
-    get().setDesign(design);
-  },
-
-  updateRoom: (width, depth, height) => {
-    set((state) => {
-      const newDesign: KitchenDesign = {
-        ...state.design,
-        room: {
-          ...state.design.room,
-          width,
-          depth,
-          height,
-          walls: [
-            { id: 'wall-0', start: { x: 0, y: 0 }, end: { x: width, y: 0 }, thickness: 120 },
-            { id: 'wall-1', start: { x: width, y: 0 }, end: { x: width, y: depth }, thickness: 120 },
-            { id: 'wall-2', start: { x: width, y: depth }, end: { x: 0, y: depth }, thickness: 120 },
-            { id: 'wall-3', start: { x: 0, y: depth }, end: { x: 0, y: 0 }, thickness: 120 },
-          ],
-          vertices: [
-            { x: 0, y: 0 }, { x: width, y: 0 }, { x: width, y: depth }, { x: 0, y: depth },
-          ],
-        },
-        updatedAt: Date.now(),
-      };
-      const newHistory = state.history.slice(0, state.historyIndex + 1);
-      newHistory.push(newDesign);
-      return {
-        design: newDesign,
-        analysis: runFullAnalysis(newDesign),
-        history: newHistory,
-        historyIndex: newHistory.length - 1,
-      };
-    });
-    get().persist();
-  },
-
-  addCarcass: (c) => {
-    set((state) => {
-      const newDesign = {
-        ...state.design,
-        carcasses: [...state.design.carcasses, c],
-        updatedAt: Date.now(),
-      };
-      const newHistory = state.history.slice(0, state.historyIndex + 1);
-      newHistory.push(newDesign);
-      return {
-        design: newDesign,
-        analysis: runFullAnalysis(newDesign),
-        history: newHistory,
-        historyIndex: newHistory.length - 1,
-      };
-    });
-    get().persist();
-  },
-
-  updateCarcass: (id, updates) => {
-    set((state) => {
-      const newDesign = {
-        ...state.design,
-        carcasses: state.design.carcasses.map((c) => (c.id === id ? { ...c, ...updates } : c)),
-        updatedAt: Date.now(),
-      };
-      return {
-        design: newDesign,
-        analysis: runFullAnalysis(newDesign),
-      };
-    });
-    get().persist();
-  },
-
-  removeCarcass: (id) => {
-    set((state) => {
-      const newDesign = {
-        ...state.design,
-        carcasses: state.design.carcasses.filter((c) => c.id !== id),
-        updatedAt: Date.now(),
-      };
-      const newHistory = state.history.slice(0, state.historyIndex + 1);
-      newHistory.push(newDesign);
-      return {
-        design: newDesign,
-        selectedId: state.selectedId === id ? null : state.selectedId,
-        analysis: runFullAnalysis(newDesign),
-        history: newHistory,
-        historyIndex: newHistory.length - 1,
-      };
-    });
-    get().persist();
-  },
-
-  addFurniture: (f) => {
-    set((state) => {
-      const newDesign = { ...state.design, furniture: [...state.design.furniture, f], updatedAt: Date.now() };
-      const newHistory = state.history.slice(0, state.historyIndex + 1);
-      newHistory.push(newDesign);
-      return {
-        design: newDesign,
-        analysis: runFullAnalysis(newDesign),
-        history: newHistory,
-        historyIndex: newHistory.length - 1,
-      };
-    });
-    get().persist();
-  },
-
-  updateFurniture: (id, updates) => {
-    set((state) => ({
-      design: {
-        ...state.design,
-        furniture: state.design.furniture.map((f) => (f.id === id ? { ...f, ...updates } : f)),
-        updatedAt: Date.now(),
-      },
-    }));
-    get().persist();
-  },
-
-  removeFurniture: (id) => {
-    set((state) => {
-      const newDesign = {
-        ...state.design,
-        furniture: state.design.furniture.filter((f) => f.id !== id),
-        updatedAt: Date.now(),
-      };
-      return {
-        design: newDesign,
-        selectedId: state.selectedId === id ? null : state.selectedId,
-        analysis: runFullAnalysis(newDesign),
-      };
-    });
-    get().persist();
-  },
-
-  addIsland: (i) => {
-    set((state) => {
-      const newDesign = { ...state.design, islands: [...state.design.islands, i], updatedAt: Date.now() };
-      const newHistory = state.history.slice(0, state.historyIndex + 1);
-      newHistory.push(newDesign);
-      return {
-        design: newDesign,
-        analysis: runFullAnalysis(newDesign),
-        history: newHistory,
-        historyIndex: newHistory.length - 1,
-      };
-    });
-    get().persist();
-  },
-
-  updateIsland: (id, updates) => {
-    set((state) => ({
-      design: {
-        ...state.design,
-        islands: state.design.islands.map((i) => (i.id === id ? { ...i, ...updates } : i)),
-        updatedAt: Date.now(),
-      },
-    }));
-    get().persist();
-  },
-
-  removeIsland: (id) => {
-    set((state) => {
-      const newDesign = {
-        ...state.design,
-        islands: state.design.islands.filter((i) => i.id !== id),
-        updatedAt: Date.now(),
-      };
-      return {
-        design: newDesign,
-        selectedId: state.selectedId === id ? null : state.selectedId,
-        analysis: runFullAnalysis(newDesign),
-      };
-    });
-    get().persist();
-  },
-
-  updateColours: (c) => {
-    set((state) => {
-      const newDesign = {
-        ...state.design,
-        colours: { ...state.design.colours, ...c },
-        updatedAt: Date.now(),
-      };
-      return { design: newDesign, analysis: runFullAnalysis(newDesign) };
-    });
-    get().persist();
-  },
-
+  setScreen: (s) => set({ screen: s }),
   setSelected: (id) => set({ selectedId: id }),
   setTool: (t) => set({ tool: t }),
-
-  startDrawingRoom: () => set({ isDrawingRoom: true, drawingVertices: [], tool: 'draw-room' }),
-
-  addDrawingVertex: (v) => set((state) => ({ drawingVertices: [...state.drawingVertices, v] })),
-
-  updateDrawingCursor: (v) => set({ cursorWorldPos: v }),
-
-  cancelDrawing: () => set({ isDrawingRoom: false, drawingVertices: [], tool: 'select' }),
-
-  finishDrawingRoom: () => {
-    set((state) => {
-      if (state.drawingVertices.length < 3) return { isDrawingRoom: false, drawingVertices: [], tool: 'select' };
-      const vertices = [...state.drawingVertices];
-      const walls = wallsFromVertices(vertices);
-      const bb = boundingBox(vertices);
-      const newDesign: KitchenDesign = {
-        ...state.design,
-        room: {
-          ...state.design.room,
-          width: bb.width,
-          depth: bb.depth,
-          walls,
-          vertices,
-          origin: { x: bb.minX, y: bb.minY },
-        },
-        updatedAt: Date.now(),
-      };
-      const newHistory = state.history.slice(0, state.historyIndex + 1);
-      newHistory.push(newDesign);
-      return {
-        design: newDesign,
-        analysis: runFullAnalysis(newDesign),
-        history: newHistory,
-        historyIndex: newHistory.length - 1,
-        isDrawingRoom: false,
-        drawingVertices: [],
-        tool: 'select',
-      };
-    });
-    get().persist();
-  },
-
-  setRoomVertices: (vertices) => {
-    set((state) => {
-      const walls = wallsFromVertices(vertices);
-      const bb = boundingBox(vertices);
-      const newDesign: KitchenDesign = {
-        ...state.design,
-        room: { ...state.design.room, width: bb.width, depth: bb.depth, walls, vertices, origin: { x: bb.minX, y: bb.minY } },
-        updatedAt: Date.now(),
-      };
-      const newHistory = state.history.slice(0, state.historyIndex + 1);
-      newHistory.push(newDesign);
-      return { design: newDesign, analysis: runFullAnalysis(newDesign), history: newHistory, historyIndex: newHistory.length - 1 };
-    });
-    get().persist();
-  },
-
-  addVertexToRoom: (wallIndex, point) => {
-    set((state) => {
-      const vertices = [...state.design.room.vertices];
-      vertices.splice(wallIndex + 1, 0, point);
-      const walls = wallsFromVertices(vertices);
-      const bb = boundingBox(vertices);
-      const newDesign: KitchenDesign = {
-        ...state.design,
-        room: { ...state.design.room, width: bb.width, depth: bb.depth, walls, vertices, origin: { x: bb.minX, y: bb.minY } },
-        updatedAt: Date.now(),
-      };
-      return { design: newDesign, analysis: runFullAnalysis(newDesign) };
-    });
-    get().persist();
-  },
-
-  updateRoomVertex: (index, position) => {
-    set((state) => {
-      const vertices = [...state.design.room.vertices];
-      if (index < 0 || index >= vertices.length) return {};
-      // Snap to grid
-      const snapped = { x: Math.round(position.x / 50) * 50, y: Math.round(position.y / 50) * 50 };
-      vertices[index] = snapped;
-      const walls = wallsFromVertices(vertices);
-      const bb = boundingBox(vertices);
-      const newDesign: KitchenDesign = {
-        ...state.design,
-        room: { ...state.design.room, width: bb.width, depth: bb.depth, walls, vertices, origin: { x: bb.minX, y: bb.minY } },
-        updatedAt: Date.now(),
-      };
-      return { design: newDesign, analysis: runFullAnalysis(newDesign) };
-    });
-  },
-
-  addOpening: (opening) => {
-    set((state) => {
-      const newDesign = { ...state.design, room: { ...state.design.room, openings: [...state.design.room.openings, opening] }, updatedAt: Date.now() };
-      const newHistory = state.history.slice(0, state.historyIndex + 1);
-      newHistory.push(newDesign);
-      return { design: newDesign, analysis: runFullAnalysis(newDesign), history: newHistory, historyIndex: newHistory.length - 1, selectedOpeningType: null };
-    });
-    get().persist();
-  },
-
-  removeOpening: (id) => {
-    set((state) => {
-      const newDesign = { ...state.design, room: { ...state.design.room, openings: state.design.room.openings.filter((o) => o.id !== id) }, updatedAt: Date.now() };
-      return { design: newDesign, analysis: runFullAnalysis(newDesign) };
-    });
-    get().persist();
-  },
-
-  addUtilityPoint: (point) => {
-    set((state) => {
-      const newDesign = { ...state.design, utilityPoints: [...(state.design.utilityPoints || []), point], updatedAt: Date.now() };
-      return { design: newDesign, analysis: runFullAnalysis(newDesign), selectedUtilityType: null };
-    });
-    get().persist();
-  },
-
-  removeUtilityPoint: (id) => {
-    set((state) => {
-      const newDesign = { ...state.design, utilityPoints: (state.design.utilityPoints || []).filter((p) => p.id !== id), updatedAt: Date.now() };
-      return { design: newDesign, analysis: runFullAnalysis(newDesign) };
-    });
-    get().persist();
-  },
-
-  setSelectedOpeningType: (t) => set({ selectedOpeningType: t, tool: t ? 'place-opening' : 'select' }),
-  setSelectedUtilityType: (t) => set({ selectedUtilityType: t, tool: t ? 'place-utility' : 'select' }),
-
-  setPendingAIPreview: (preview) => set({ pendingAIPreview: preview }),
-
-  confirmAIPreview: () => {
-    set((state) => {
-      if (!state.pendingAIPreview) return {};
-      const { intent, roomPreview } = state.pendingAIPreview;
-      // Build design from the confirmed intent
-      // For now, just set the room vertices
-      const walls = wallsFromVertices(roomPreview.vertices);
-      const bb = boundingBox(roomPreview.vertices);
-      const newDesign: KitchenDesign = {
-        ...state.design,
-        room: { ...state.design.room, width: roomPreview.width, depth: roomPreview.depth, walls, vertices: roomPreview.vertices, origin: { x: bb.minX, y: bb.minY }, openings: [] },
-        updatedAt: Date.now(),
-      };
-      const newHistory = state.history.slice(0, state.historyIndex + 1);
-      newHistory.push(newDesign);
-      return { design: newDesign, analysis: runFullAnalysis(newDesign), history: newHistory, historyIndex: newHistory.length - 1, pendingAIPreview: null };
-    });
-    get().persist();
-  },
-
-  cancelAIPreview: () => set({ pendingAIPreview: null }),
-
-  startFreehandDraw: () => set({ isFreehandDrawing: true, isDrawingRoom: true, drawingVertices: [], tool: 'draw-room' }),
-  addFreehandPoint: (p) => set((state) => ({ drawingVertices: [...state.drawingVertices, p] })),
-  finishFreehandDraw: () => {
-    set((state) => {
-      if (state.drawingVertices.length < 3) return { isFreehandDrawing: false, isDrawingRoom: false, drawingVertices: [], tool: 'select' };
-      // Simplify the freehand path — keep every Nth point
-      const raw = state.drawingVertices;
-      const simplified: Vec2[] = [];
-      const step = Math.max(1, Math.floor(raw.length / 20));
-      for (let i = 0; i < raw.length; i += step) simplified.push(raw[i]);
-      if (simplified[simplified.length - 1] !== raw[raw.length - 1]) simplified.push(raw[raw.length - 1]);
-      // Snap to grid
-      const snapped = simplified.map((v) => ({ x: Math.round(v.x / 200) * 200, y: Math.round(v.y / 200) * 200 }));
-      // Remove duplicate consecutive points
-      const deduped: Vec2[] = [];
-      for (const v of snapped) {
-        const last = deduped[deduped.length - 1]; if (Math.hypot(last.x - v.x, last.y - v.y) > 100) deduped.push(v);
-      }
-      if (deduped.length < 3) return { isFreehandDrawing: false, isDrawingRoom: false, drawingVertices: [], tool: 'select' };
-      const walls = wallsFromVertices(deduped);
-      const bb = boundingBox(deduped);
-      const newDesign: KitchenDesign = {
-        ...state.design,
-        room: { ...state.design.room, width: bb.width, depth: bb.depth, walls, vertices: deduped, origin: { x: bb.minX, y: bb.minY } },
-        updatedAt: Date.now(),
-      };
-      const newHistory = state.history.slice(0, state.historyIndex + 1);
-      newHistory.push(newDesign);
-      return { design: newDesign, analysis: runFullAnalysis(newDesign), history: newHistory, historyIndex: newHistory.length - 1, isFreehandDrawing: false, isDrawingRoom: false, drawingVertices: [], tool: 'select' };
-    });
-    get().persist();
-  },
-
-  setEditingWallId: (id) => set({ editingWallId: id }),
-
-  updateWallLength: (wallId, newLength) => {
-    set((state) => {
-      const vertices = [...state.design.room.vertices];
-      if (vertices.length < 2) return {};
-      // Find the wall index
-      let wallIdx = -1;
-      for (let i = 0; i < vertices.length; i++) {
-        if (state.design.room.walls[i]?.id === wallId) { wallIdx = i; break; }
-      }
-      if (wallIdx === -1) return {};
-      const start = vertices[wallIdx];
-      const end = vertices[(wallIdx + 1) % vertices.length];
-      const dx = end.x - start.x;
-      const dy = end.y - start.y;
-      const currentLen = Math.sqrt(dx * dx + dy * dy);
-      if (currentLen === 0) return {};
-      const ratio = newLength / currentLen;
-      const newEnd = { x: start.x + dx * ratio, y: start.y + dy * ratio };
-      vertices[(wallIdx + 1) % vertices.length] = newEnd;
-      const walls = wallsFromVertices(vertices);
-      const bb = boundingBox(vertices);
-      const newDesign: KitchenDesign = {
-        ...state.design,
-        room: { ...state.design.room, width: bb.width, depth: bb.depth, walls, vertices, origin: { x: bb.minX, y: bb.minY } },
-        updatedAt: Date.now(),
-      };
-      return { design: newDesign, analysis: runFullAnalysis(newDesign), editingWallId: null };
-    });
-    get().persist();
-  },
   setSelectedCarcassSize: (s) => set({ selectedCarcassSize: s }),
+  setViewMode: (v) => set({ viewMode: v }),
+  setWalkIndex: (i) => set({ walkIndex: i }),
+  setSheetTab: (t) => set({ sheetTab: t }),
+  setScale: (s) => set({ scale: s }),
+  setPosition: (p) => set({ position: p }),
+  setRoomDraft: (points) => set({ roomDraft: { points } }),
+  setSelectedCornerIndex: (i) => set({ selectedCornerIndex: i }),
+  setSelectedWallIndex: (i) => set({ selectedWallIndex: i }),
+  confirmRoomDraft: () => set((s) => { const d = cloneDesign(s.design); d.room = { ...d.room, points: s.roomDraft.points }; return { ...commit(s, d), screen: 'editor' as Screen }; }),
 
-  runAnalysis: () => {
-    set((state) => ({ analysis: runFullAnalysis(state.design) }));
-  },
+  setShowExportPanel: (v) => set({ showExportPanel: v }),
+  setShareLinkPublic: (v) => set({ shareLinkPublic: v }),
+  setLinkCopied: (v) => set({ linkCopied: v }),
+  setInviteEmail: (e) => set({ inviteEmail: e }),
+  inviteCollaborator: () => set((s) => { const email = s.inviteEmail.trim(); if (!email) return {}; return { collaborators: [...s.collaborators, { id: Date.now(), name: email.split('@')[0], email, role: 'Viewer' }], inviteEmail: '' }; }),
+  removeCollaborator: (id) => set((s) => ({ collaborators: id === 1 ? s.collaborators : s.collaborators.filter((c) => c.id !== id) })),
+  setCollaboratorRole: (id, role) => set((s) => ({ collaborators: s.collaborators.map((c) => c.id === id ? { ...c, role } : c) })),
+  restoreVersion: (idx) => set((s) => ({ design: cloneDesign(s.history[idx]), historyIndex: idx, showExportPanel: false, selectedId: null })),
 
-  undo: () => {
-    set((state) => {
-      if (state.historyIndex > 0) {
-        const newIndex = state.historyIndex - 1;
-        return { design: state.history[newIndex], historyIndex: newIndex, analysis: runFullAnalysis(state.history[newIndex]) };
-      }
-      return {};
-    });
-  },
+  undo: () => set((s) => s.historyIndex <= 0 ? {} : { design: cloneDesign(s.history[s.historyIndex - 1]), historyIndex: s.historyIndex - 1, selectedId: null, analysis: computeAnalysis(s.history[s.historyIndex - 1]) }),
+  redo: () => set((s) => s.historyIndex >= s.history.length - 1 ? {} : { design: cloneDesign(s.history[s.historyIndex + 1]), historyIndex: s.historyIndex + 1, selectedId: null, analysis: computeAnalysis(s.history[s.historyIndex + 1]) }),
 
-  redo: () => {
-    set((state) => {
-      if (state.historyIndex < state.history.length - 1) {
-        const newIndex = state.historyIndex + 1;
-        return { design: state.history[newIndex], historyIndex: newIndex, analysis: runFullAnalysis(state.history[newIndex]) };
-      }
-      return {};
-    });
-  },
+  addAmericanFridge: () => set((s) => {
+    const d = cloneDesign(s.design);
+    d.carcasses.push({ id: `carcass-${Date.now()}`, size: 900 as Carcass['size'], depth: 750 as Carcass['depth'], mount: 'tall', position: { x: 200, y: 200 }, rotation: 0, label: 'American Fridge-Freezer', fittingType: 'plain', fittingLabel: '', applianceType: 'fridge-american', applianceLabel: 'American Fridge-Freezer' });
+    return commit(s, d);
+  }),
 
-  persist: () => {
-    try {
-      const state = get();
-      localStorage.setItem('kitchenplan-design-v2', JSON.stringify(state.design));
-    } catch (e) {
-      // localStorage might not be available
-    }
-  },
-
+  persist: () => { try { localStorage.setItem('kitchenplan-design-v3', JSON.stringify(get().design)); } catch {} },
   load: () => {
     try {
-      const saved = localStorage.getItem('kitchenplan-design-v2');
-      if (saved) {
-        const design = JSON.parse(saved) as KitchenDesign;
-        // Migrate old data — ensure all required fields exist
-        if (!design.room.vertices || design.room.vertices.length === 0) {
-          // No vertices — create from walls or dimensions
-          const w = design.room.width || 4000;
-          const d = design.room.depth || 3000;
-          design.room.vertices = [
-            { x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: d }, { x: 0, y: d },
-          ];
-          design.room.walls = wallsFromVertices(design.room.vertices);
-        }
-        if (!design.utilityPoints) design.utilityPoints = [];
-        if (!design.islands) design.islands = [];
-        if (!design.furniture) design.furniture = [];
-        if (!design.colours) design.colours = { cabinets: '#C9B79C', countertops: '#2E2620', walls: '#F8F3EA', floor: '#E4D3BA', backsplash: '#EFE2D0', handles: '#5B4A38' };
-        set({ design, analysis: runFullAnalysis(design) });
-      }
-    } catch (e) {
-      // If load fails, clear and use default
-      try { localStorage.removeItem('kitchenplan-design-v2'); } catch {}
-    }
+      const saved = localStorage.getItem('kitchenplan-design-v3');
+      if (saved) { const d = JSON.parse(saved) as KitchenDesign; set({ design: d, analysis: computeAnalysis(d) }); }
+      else { set({ analysis: computeAnalysis(get().design) }); }
+    } catch { try { localStorage.removeItem('kitchenplan-design-v3'); } catch {} }
   },
 }));
+
+// Compute analysis on init
+useStore.getState().analysis = computeAnalysis(useStore.getState().design);
