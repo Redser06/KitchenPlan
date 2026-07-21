@@ -101,7 +101,7 @@ export default function App() {
 
         <AIPromptBar />
 
-        <button onClick={() => openRoomSetup('room-setup')} title="Edit room shape" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 12px', borderRadius: 9px, color: 'var(--text-2)', fontSize: 13, fontWeight: 500 }}>
+        <button onClick={() => openRoomSetup('room-setup')} title="Edit room shape" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '9px 12px', borderRadius: 9, color: 'var(--text-2)', fontSize: 13, fontWeight: 500 }}>
           <svg viewBox="0 0 20 20" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round"><polygon points="3,8 10,3 17,8 17,17 3,17"/></svg>
           <span style={{ color: 'var(--accent)', fontWeight: 600 }}>Room shape</span>
         </button>
