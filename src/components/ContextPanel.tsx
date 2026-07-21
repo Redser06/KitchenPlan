@@ -60,6 +60,10 @@ export default function ContextPanel() {
           <div className="field"><label>Depth (mm)</label><input type="number" step={50} value={furniture.depth} onChange={(e) => updateFurniture(furniture.id, { depth: Number(e.target.value) })} /></div>
         </div>
         {furniture.seats !== undefined && <div className="field"><label>Seats</label><input type="number" min={2} max={12} value={furniture.seats} onChange={(e) => updateFurniture(furniture.id, { seats: Number(e.target.value) })} /></div>}
+        <div className="field"><label>Rotation (degrees)</label><input type="number" step={15} value={furniture.rotation} onChange={(e) => updateFurniture(furniture.id, { rotation: Number(e.target.value) })} /></div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+          {[0, 90, 180, 270].map(r => <button key={r} onClick={() => updateFurniture(furniture.id, { rotation: r })} style={{ flex: 1, padding: '6px 0', fontSize: 12, fontWeight: 600, background: furniture.rotation === r ? 'var(--accent-soft)' : 'var(--bg)', color: furniture.rotation === r ? 'var(--accent)' : 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 6 }}>{r}°</button>)}
+        </div>
         <button className="delete-btn" onClick={() => { removeFurniture(furniture.id); setSelected(null); }}>🗑 Delete item</button>
       </div>
     );
@@ -78,6 +82,10 @@ export default function ContextPanel() {
         <div className="field"><label>Label</label><input type="text" value={carcass.label || ''} placeholder={`${carcass.size}mm Unit`} onChange={(e) => updateCarcass(carcass.id, { label: e.target.value })} /></div>
         <div className="field"><label>Fitting</label><select value={carcass.fittingType} onChange={(e) => { const opt = FITTING_OPTIONS.find(o => o.value === e.target.value); updateCarcass(carcass.id, { fittingType: e.target.value, fittingLabel: opt?.label.replace('— ', '') || '' }); }}>{FITTING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
         <div className="field"><label>Appliance</label><select value={carcass.applianceType || ''} onChange={(e) => { const val = e.target.value; const opt = APPLIANCE_OPTIONS.find(o => o.value === val); updateCarcass(carcass.id, { applianceType: val || null, applianceLabel: val ? opt?.label || val : null }); }}>{APPLIANCE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}</select></div>
+        <div className="field"><label>Rotation (degrees)</label><input type="number" step={15} value={carcass.rotation} onChange={(e) => updateCarcass(carcass.id, { rotation: Number(e.target.value) })} /></div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+          {[0, 90, 180, 270].map(r => <button key={r} onClick={() => updateCarcass(carcass.id, { rotation: r })} style={{ flex: 1, padding: '6px 0', fontSize: 12, fontWeight: 600, background: carcass.rotation === r ? 'var(--accent-soft)' : 'var(--bg)', color: carcass.rotation === r ? 'var(--accent)' : 'var(--text-3)', border: '1px solid var(--border)', borderRadius: 6 }}>{r}°</button>)}
+        </div>
         <button className="delete-btn" onClick={() => { removeCarcass(carcass.id); setSelected(null); }}>🗑 Delete unit</button>
       </div>
     );

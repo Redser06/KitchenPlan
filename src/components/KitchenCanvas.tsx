@@ -31,6 +31,8 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
   const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
   const [dragState, setDragState] = useState<any>(null);
   const [panState, setPanState] = useState<any>(null);
+  const [rotationState, setRotationState] = useState<{ id: string; type: string; cx: number; cy: number; startAngle: number; startRotation: number } | null>(null);
+  const [viewRotation, setViewRotation] = useState(0);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -94,7 +96,7 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
   const walkWp = waypoints[walkIdx] || { x: 0, y: 0, label: '' };
 
   // Transform
-  let groupTransform = `translate(${position.x} ${position.y}) scale(${scale})`;
+  let groupTransform = `translate(${position.x} ${position.y}) scale(${scale}) rotate(${viewRotation} 500 350)`;
   if (isWalk) {
     const wpIso = iso(toPx(walkWp.x), toPx(walkWp.y), 45);
     const walkScale = 2.4;
@@ -113,7 +115,42 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
     if (tool === 'pan') return;
     const mm = clickToMm(e);
     if (tool === 'place-carcass') {
-      addCarcass({ id: `carcass-${Date.now()}`, size: selectedCarcassSize, depth: 600, mount: 'floor', position: { x: Math.round(mm.x / 50) * 50, y: Math.round(mm.y / 50) * 50 }, rotation: 0, label: '', fittingType: 'plain', fittingLabel: '', applianceType: null, applianceLabel: null });
+      // Find nearest wall and auto-rotate to align with it
+      const pts = design.room.points;
+      let nearestWall = -1, nearestDist = 400; // 400mm snap threshold
+      let projectedPt = mm;
+      for (let i = 0; i < pts.length; i++) {
+        const p1 = pts[i], p2 = pts[(i + 1) % pts.length];
+        const dx = p2.x - p1.x, dy = p2.y - p1.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const t = Math.max(0, Math.min(1, ((mm.x - p1.x) * dx + (mm.y - p1.y) * dy) / (len * len)));
+        const proj = { x: p1.x + dx * t, y: p1.y + dy * t };
+        const d = Math.hypot(mm.x - proj.x, mm.y - proj.y);
+        if (d < nearestDist) { nearestDist = d; nearestWall = i; projectedPt = proj; }
+      }
+
+      let pos = { x: Math.round(mm.x / 50) * 50, y: Math.round(mm.y / 50) * 50 };
+      let rotation = 0;
+
+      if (nearestWall >= 0) {
+        const p1 = pts[nearestWall], p2 = pts[(nearestWall + 1) % pts.length];
+        const wallAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;
+        rotation = Math.round(wallAngle);
+        // Normalize to 0-360
+        while (rotation < 0) rotation += 360;
+        // Offset from wall by cabinet depth (600mm), toward room interior
+        const centroid = { x: pts.reduce((s, p) => s + p.x, 0) / pts.length, y: pts.reduce((s, p) => s + p.y, 0) / pts.length };
+        const wallMid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
+        const towardCenter = { x: centroid.x - wallMid.x, y: centroid.y - wallMid.y };
+        const tcLen = Math.hypot(towardCenter.x, towardCenter.y) || 1;
+        const offset = 300; // half the depth
+        pos = {
+          x: Math.round((projectedPt.x + towardCenter.x / tcLen * offset) / 50) * 50,
+          y: Math.round((projectedPt.y + towardCenter.y / tcLen * offset) / 50) * 50,
+        };
+      }
+
+      addCarcass({ id: `carcass-${Date.now()}`, size: selectedCarcassSize, depth: 600, mount: 'floor', position: pos, rotation, label: '', fittingType: 'plain', fittingLabel: '', applianceType: null, applianceLabel: null });
       setSelected(null); setTool('select');
     } else if (tool === 'place-furniture') {
       addFurniture({ id: `furn-${Date.now()}`, type: 'dining-table', label: 'Dining Table', position: { x: Math.round(mm.x / 50) * 50, y: Math.round(mm.y / 50) * 50 }, width: 1400, depth: 800, rotation: 0, seats: 4 });
@@ -149,6 +186,27 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
     setDragState({ id, type, sx: e.clientX, sy: e.clientY, startPos: { ...item.position }, rw: rect.width, rh: rect.height, moved: false });
   };
 
+  const startRotation = (e: React.MouseEvent, id: string, type: string) => {
+    if (tool !== 'select') return;
+    e.stopPropagation();
+    const item = type === 'carcass' ? design.carcasses.find((c: any) => c.id === id) : design.furniture.find((f: any) => f.id === id);
+    if (!item) return;
+    const rect = containerRef.current!.getBoundingClientRect();
+    const cx = (toPx(item.position.x) + position.x) * (rect.width / 1000) / scale;
+    const cy = (toPx(item.position.y) + position.y) * (rect.height / 700) / scale;
+    // Actually for SVG viewBox, the center in screen coords:
+    const itemCx = item.position.x + (type === 'carcass' ? (item as any).size / 2 : (item as any).width / 2);
+    const itemCy = item.position.y + (type === 'carcass' ? (item as any).depth / 2 : (item as any).depth / 2);
+    const vbCx = toPx(itemCx) * scale + position.x;
+    const vbCy = toPx(itemCy) * scale + position.y;
+    const screenCx = rect.left + vbCx * rect.width / 1000;
+    const screenCy = rect.top + vbCy * rect.height / 700;
+    const dx = e.clientX - screenCx;
+    const dy = e.clientY - screenCy;
+    const startAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+    setRotationState({ id, type, cx: screenCx, cy: screenCy, startAngle, startRotation: item.rotation || 0 });
+  };
+
   const onCanvasMouseMove = (e: React.MouseEvent<SVGElement>) => {
     if (dragState) {
       const ds = dragState;
@@ -162,6 +220,17 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
     if (panState) {
       const rect = containerRef.current!.getBoundingClientRect();
       setPosition({ x: panState.startPos.x + (e.clientX - panState.sx) * (1000 / rect.width), y: panState.startPos.y + (e.clientY - panState.sy) * (700 / rect.height) });
+    }
+    if (rotationState) {
+      const rs = rotationState;
+      const dx = e.clientX - rs.cx;
+      const dy = e.clientY - rs.cy;
+      const currentAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+      let newRotation = rs.startRotation + (currentAngle - rs.startAngle);
+      // Snap to 15° increments
+      newRotation = Math.round(newRotation / 15) * 15;
+      if (rs.type === 'carcass') updateCarcass(rs.id, { rotation: newRotation });
+      else updateFurniture(rs.id, { rotation: newRotation });
     }
   };
 
@@ -196,7 +265,7 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', background: 'var(--bg)' }}
-      onMouseUp={() => { setDragState(null); setPanState(null); }} onMouseLeave={() => { setDragState(null); setPanState(null); }}>
+      onMouseUp={() => { setDragState(null); setPanState(null); setRotationState(null); }} onMouseLeave={() => { setDragState(null); setPanState(null); setRotationState(null); }}>
       <svg viewBox="0 0 1000 700" width="100%" height="100%" style={{ display: 'block', cursor }}
         onMouseMove={onCanvasMouseMove}>
         <rect x={-2000} y={-2000} width={6000} height={6000} fill="var(--bg)"
@@ -249,6 +318,16 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
                     onMouseDown={(e) => startDrag(e, f.id, 'furniture')} onClick={(e) => { e.stopPropagation(); setSelected(f.id); }} style={{ cursor: 'move' }}>
                     <rect width={toPx(f.width)} height={toPx(f.depth)} fill="#C9B79C" opacity={0.5} stroke={isSel ? 'var(--accent)' : '#9C8B6E'} strokeWidth={isSel ? 2.4 : 1.2} vectorEffect="non-scaling-stroke" rx={5} />
                     <text x={toPx(f.width) / 2} y={toPx(f.depth) / 2 + 4} fontSize={11} fill="#6B6058" textAnchor="middle">{f.label}</text>
+                    {isSel && (
+                      <g>
+                        {/* Rotation handle — top-right corner */}
+                        <circle cx={toPx(f.width) + 20} cy={-20} r={12 * scale} fill="var(--surface)" stroke="var(--accent)" strokeWidth={2 * scale}
+                          style={{ cursor: 'grab' }} onMouseDown={(e) => { e.stopPropagation(); startRotation(e, f.id, 'furniture'); }}
+                          pointerEvents="all" />
+                        <line x1={toPx(f.width)} y1={0} x2={toPx(f.width) + 20} y2={-20} stroke="var(--accent)" strokeWidth={1 * scale} strokeDasharray="3 2" pointerEvents="none" />
+                        <text x={toPx(f.width) + 20} y={-16} fontSize={8 * scale} fill="var(--accent)" textAnchor="middle" pointerEvents="none">↻</text>
+                      </g>
+                    )}
                   </g>
                 );
               })}
@@ -270,6 +349,15 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
                     <line x1={0} y1={h} x2={w} y2={h} stroke={colours.countertops} strokeWidth={4} vectorEffect="non-scaling-stroke" />
                     <text x={6} y={c.applianceType ? 25 : Math.max(14, h - 6)} fontSize={9.5} fill="#3A322B" opacity={0.75} fontFamily="Inter,sans-serif">{c.label || `${c.size}mm Unit`}</text>
                     {c.applianceLabel && <text x={6} y={14} fontSize={9} fill="#8A3F1E" fontFamily="Inter,sans-serif" fontWeight={600}>{c.applianceLabel}</text>}
+                    {isSel && (
+                      <g>
+                        <circle cx={w + 20} cy={-20} r={12 * scale} fill="var(--surface)" stroke="var(--accent)" strokeWidth={2 * scale}
+                          style={{ cursor: 'grab' }} onMouseDown={(e) => { e.stopPropagation(); startRotation(e, c.id, 'carcass'); }}
+                          pointerEvents="all" />
+                        <line x1={w} y1={0} x2={w + 20} y2={-20} stroke="var(--accent)" strokeWidth={1 * scale} strokeDasharray="3 2" pointerEvents="none" />
+                        <text x={w + 20} y={-16} fontSize={8 * scale} fill="var(--accent)" textAnchor="middle" pointerEvents="none">↻</text>
+                      </g>
+                    )}
                   </g>
                 );
               })}
@@ -361,6 +449,15 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
         </div>
       )}
 
+      {/* Rotate room view */}
+      <div style={{ position: 'absolute', top: 14, right: 14, display: 'flex', gap: 6, zIndex: 10 }}>
+        <button onClick={() => setViewRotation(r => r + 90)} title="Rotate view 90°"
+          style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 9, padding: '7px 12px', fontSize: 12, fontWeight: 500, color: 'var(--text-2)', display: 'flex', alignItems: 'center', gap: 4, boxShadow: 'var(--shadow-sm)' }}>
+          <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M4 10 a6 6 0 1 0 2-4.5"/><path d="M4 3 V6 H7"/></svg>
+          Rotate
+        </button>
+      </div>
+
       {!isWalk && (
         <div className="canvas-hint">
           {tool === 'place-carcass' ? `Click to place a ${selectedCarcassSize}mm cabinet` :
@@ -368,6 +465,7 @@ export default function KitchenCanvas({ scale, position, setScale, setPosition, 
            ['place-door','place-window','place-socket','place-switch'].includes(tool) ? 'Click on a wall to place' :
            ['place-water','place-waste','place-light-pendant','place-light-downlight'].includes(tool) ? 'Click on the floor to place' :
            tool === 'pan' ? 'Drag to pan' :
+           tool === 'select' ? 'Click to select · Drag to move · Drag ↻ to rotate' :
            'Click to select · Drag to move'}
         </div>
       )}

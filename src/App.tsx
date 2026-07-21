@@ -42,6 +42,15 @@ export default function App() {
         else if (store.design.furniture.find((f) => f.id === id)) store.removeFurniture(id);
         else if (store.design.fixtures.find((f) => f.id === id)) store.removeFixture(id);
       }
+      if (e.key === 'r' || e.key === 'R') {
+        const id = store.selectedId;
+        if (id) {
+          const c = store.design.carcasses.find((c: any) => c.id === id);
+          const f = store.design.furniture.find((f: any) => f.id === id);
+          if (c) store.updateCarcass(id, { rotation: ((c.rotation || 0) + 90) % 360 });
+          else if (f) store.updateFurniture(id, { rotation: ((f.rotation || 0) + 90) % 360 });
+        }
+      }
       if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); store.undo(); }
       if ((e.metaKey || e.ctrlKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) { e.preventDefault(); store.redo(); }
     };
